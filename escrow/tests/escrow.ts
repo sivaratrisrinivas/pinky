@@ -125,7 +125,7 @@ describe("escrow", () => {
       .rpc();
   }
 
-  async function fails(action: Promise<unknown>) {
+  async function fails(action: Promise<unknown>, errorCode?: string) {
     let error: unknown;
     try {
       await action;
@@ -133,6 +133,9 @@ describe("escrow", () => {
       error = e;
     }
     expect(error, "expected the transaction to fail").to.not.equal(undefined);
+    if (errorCode) {
+      expect(String(error)).to.include(errorCode);
+    }
   }
 
   it("deposit then refund returns the full amount to the promiser", async () => {
@@ -185,16 +188,21 @@ describe("escrow", () => {
     const broken = await promiser(p);
     const keptPromise = await deposit(p, kept, 1);
     const brokenPromise = await deposit(p, broken, 2);
+    // A third open promise keeps the shared vault funded, so only the state
+    // check can stop a second settlement.
+    const bystander = await promiser(p);
+    await deposit(p, bystander, 3);
     await refund(p, keptPromise, kept.token, p.arbiter);
     await forfeit(p, brokenPromise, p.arbiter);
 
-    await fails(refund(p, keptPromise, kept.token, p.arbiter));
-    await fails(forfeit(p, keptPromise, p.arbiter));
-    await fails(refund(p, brokenPromise, broken.token, p.arbiter));
-    await fails(forfeit(p, brokenPromise, p.arbiter));
+    await fails(refund(p, keptPromise, kept.token, p.arbiter), "PromiseSettled");
+    await fails(forfeit(p, keptPromise, p.arbiter), "PromiseSettled");
+    await fails(refund(p, brokenPromise, broken.token, p.arbiter), "PromiseSettled");
+    await fails(forfeit(p, brokenPromise, p.arbiter), "PromiseSettled");
 
     expect(await balance(kept.token)).to.equal(AMOUNT);
     expect(await balance(p.maintainerWallet)).to.equal(AMOUNT);
+    expect(await balance(p.vault)).to.equal(AMOUNT);
   });
 
   it("refund or forfeit signed by anyone but the arbiter fails", async () => {
@@ -203,9 +211,9 @@ describe("escrow", () => {
     const promise = await deposit(p, who, 3);
     const stranger = await fundedWallet();
 
-    await fails(refund(p, promise, who.token, stranger));
-    await fails(forfeit(p, promise, stranger));
-    await fails(refund(p, promise, who.token, who.wallet));
+    await fails(refund(p, promise, who.token, stranger), "NotArbiter");
+    await fails(forfeit(p, promise, stranger), "NotArbiter");
+    await fails(refund(p, promise, who.token, who.wallet), "NotArbiter");
 
     expect(await balance(p.vault)).to.equal(AMOUNT);
     expect((await program.account.promise.fetch(promise)).state).to.deep.equal({
