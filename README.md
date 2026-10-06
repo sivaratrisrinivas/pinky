@@ -33,7 +33,8 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | --- | --- |
 | Escrow program on devnet (`escrow/`) | Done ([#2](https://github.com/sivaratrisrinivas/pinky/issues/2)) |
 | Demo repo, GitHub App, keys, deploy secrets (`scripts/setup-github-app.sh`) | Done ([#3](https://github.com/sivaratrisrinivas/pinky/issues/3)) |
-| GitHub App event handling and verdicts | Not started ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4), [#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
+| Ask first-timers for a promise (`handleEvent`, webhook) | Code done, awaiting production deploy ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4)) |
+| Verdicts from maintainer commands | Not started ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
 | Pay page with email sign-in and faucet | Not started ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6), [#7](https://github.com/sivaratrisrinivas/pinky/issues/7)) |
 | README badge, seed data, full-journey runs | Not started ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8), [#9](https://github.com/sivaratrisrinivas/pinky/issues/9), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 
@@ -46,6 +47,8 @@ escrow/                  Anchor program, tests and operator scripts
   programs/escrow/       init_project, deposit, refund, forfeit
   tests/                 behaviour tests on a local validator
   scripts/               setup-project and smoke, run against devnet
+api/webhook.ts           Vercel function: verifies the GitHub webhook and calls handleEvent
+src/                     handleEvent and its GitHub and chain ports, plus the real adapters
 scripts/                 setup-github-app.sh, the human-only setup wizard
 docs/adr/                architecture decisions
 docs/agents/             issue tracker, triage labels and domain doc conventions
@@ -96,6 +99,18 @@ npm run smoke                               # keep and break on devnet, prints t
 Keys and the generated `devnet.json` live in `escrow/.keys/` and are gitignored. The wizard `scripts/setup-github-app.sh` creates the demo repo, GitHub App, arbiter and faucet keypairs and `.env` first; `setup-project` reuses its arbiter.
 
 The demo project is `sivaratrisrinivas/pinky-demo` (repo ID 1407786691) with the test USDC mint `BATkjUKVJzLi3YNT7wKvmA6Eh3rkN9wuCpgCNnzL9Wn3`.
+
+## GitHub App
+
+`handleEvent` in `src/handle-event.ts` is the app's one entry point. It talks to the outside world only through two ports: `Github` (label, comment) and `Chain` (read the project). Tests use in-memory fakes of both. The real adapters are `src/github.ts` (Octokit) and `src/chain.ts` (reads the project account, and ignores projects that name a different arbiter).
+
+```bash
+npm install
+npm test
+npm run typecheck
+```
+
+`issues.opened` and `pull_request.opened` from a first-timer on a project get the `awaiting-promise` label and a comment with a pay link, `/pay?repo=<owner>/<name>&n=<number>`. Deploy with `vercel deploy --prod`; the webhook URL is `<app url>/api/webhook`.
 
 ## Not in v1
 
