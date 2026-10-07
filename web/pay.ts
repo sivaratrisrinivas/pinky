@@ -55,6 +55,15 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return result;
 }
 
+/** Asks the app to look at the chain and update the label. Best effort: the promise is already made. */
+async function pingApp(): Promise<void> {
+  try {
+    await post("/api/check-promise", { repo, n: Number(number) });
+  } catch {
+    // Opening the page again pings once more, and a maintainer's verdict fixes the labels anyway.
+  }
+}
+
 function bytesFromBase64(value: string): Uint8Array {
   return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 }
@@ -64,6 +73,7 @@ async function main() {
   const response = await fetch(`/api/pay?${new URLSearchParams({ repo, n: number })}`);
   const status = (await response.json()) as Status;
   if (!response.ok) return say("This link is missing its issue. Use the one in the bot's comment.", "error");
+  if (status.state === "promised") void pingApp();
   if (status.state !== "ready") return say(MESSAGES[status.state], status.state === "promised" ? "done" : "info");
 
   const dollars = Number(status.amount) / 1_000_000;
@@ -128,6 +138,7 @@ async function makePromise(sdk: BrowserSDK, wallet: string) {
   if (value.err) throw new Error("The promise didn't go through. Nothing was taken from you; try again.");
 
   say("Promise made. Thank you!", "done");
+  void pingApp();
   const link = document.createElement("a");
   link.href = explorerTx(signature);
   link.textContent = "View it on Solana Explorer";

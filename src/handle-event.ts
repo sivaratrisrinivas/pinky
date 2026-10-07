@@ -5,7 +5,7 @@ export const PROMISED_LABEL = "promised";
 export const KEPT_LABEL = "promise-kept";
 export const BROKEN_LABEL = "promise-broken";
 
-const FIRST_TIMER_ASSOCIATIONS = new Set(["NONE", "FIRST_TIMER", "FIRST_TIME_CONTRIBUTOR"]);
+export const FIRST_TIMER_ASSOCIATIONS = new Set(["NONE", "FIRST_TIMER", "FIRST_TIME_CONTRIBUTOR"]);
 
 export interface Github {
   addLabel(repo: string, number: number, label: string): Promise<void>;
@@ -14,6 +14,8 @@ export interface Github {
   comment(repo: string, number: number, body: string): Promise<void>;
   /** Whether the user can push to the repo, which is what makes them a maintainer. */
   hasWriteAccess(repo: string, login: string): Promise<boolean>;
+  /** Whether the issue or PR is still open. */
+  isOpen(repo: string, number: number): Promise<boolean>;
 }
 
 export interface Project {
@@ -31,6 +33,8 @@ export interface Chain {
   readProject(repoId: number): Promise<Project | null>;
   /** The promise for an issue or PR, or null when nobody has made one. */
   readPromise(repoId: number, issueNumber: number): Promise<PromiseRecord | null>;
+  /** Every promise of a project, open ones included, and how many are broken. Null when the repo isn't one of ours. */
+  countPromises(repoId: number): Promise<{ promises: number; broken: number } | null>;
   /** Settles an open promise with the arbiter key and returns the transaction signature. */
   settle(repoId: number, issueNumber: number, outcome: Outcome): Promise<string>;
 }
@@ -42,14 +46,20 @@ export interface Ports {
   appUrl: string;
 }
 
-export type PinkyEvent =
+export type WebhookEvent =
   | { name: "issues"; payload: IssuesEvent }
   | { name: "pull_request"; payload: PullRequestEvent }
   | { name: "issue_comment"; payload: IssueCommentEvent };
 
+export type PinkyEvent =
+  | WebhookEvent
+  /** The pay page's ping after a deposit. It carries no proof: the chain is the only authority. */
+  | { name: "check_promise"; repo: { id: number; full_name: string }; number: number };
+
 const VERDICT_COMMANDS: Record<string, Outcome> = { accept: "kept", spam: "broken" };
 
 export async function handleEvent(event: PinkyEvent, ports: Ports): Promise<void> {
+  if (event.name === "check_promise") return checkPromise(event, ports);
   if (event.name === "issue_comment") return handleComment(event.payload, ports);
   if (event.payload.action === "opened") return askForPromise(event, ports);
   if (event.payload.action === "closed") {
@@ -97,6 +107,28 @@ async function handleComment(payload: IssueCommentEvent, ports: Ports): Promise<
   );
 }
 
+async function checkPromise(
+  event: Extract<PinkyEvent, { name: "check_promise" }>,
+  ports: Ports
+): Promise<void> {
+  const { repo, number } = event;
+  const { github, chain } = ports;
+
+  if (!(await chain.readProject(repo.id))) return;
+
+  const promise = await chain.readPromise(repo.id, number);
+  // A settled promise has its final label already; a ping must not undo it.
+  if (promise?.state !== "open") return;
+
+  // The deposit landed after the issue was closed: nobody is left to give a verdict, so keep it now.
+  if (!(await github.isOpen(repo.full_name, number))) {
+    return settleOpenPromise(repo, number, "kept", ports);
+  }
+
+  await github.removeLabel(repo.full_name, number, AWAITING_PROMISE_LABEL);
+  await github.addLabel(repo.full_name, number, PROMISED_LABEL);
+}
+
 interface VerdictRequest {
   repo: { id: number; full_name: string };
   number: number;
@@ -140,6 +172,15 @@ async function settleVerdict(request: VerdictRequest, ports: Ports): Promise<voi
     return;
   }
 
+  await settleOpenPromise(repo, number, outcome, ports);
+}
+
+async function settleOpenPromise(
+  repo: { id: number; full_name: string },
+  number: number,
+  outcome: Outcome,
+  { github, chain }: Ports
+): Promise<void> {
   const signature = await chain.settle(repo.id, number, outcome);
   await github.comment(repo.full_name, number, settlementNotice(outcome, signature));
   await github.removeLabel(repo.full_name, number, AWAITING_PROMISE_LABEL);
@@ -158,7 +199,7 @@ function settlementNotice(outcome: Outcome, signature: string): string {
     : `Promise broken. It went to the maintainer wallet.${transactionLink(signature, " ", "")}`;
 }
 
-function payLink(appUrl: string, repo: string, number: number): string {
+export function payLink(appUrl: string, repo: string, number: number): string {
   const query = new URLSearchParams({ repo, n: String(number) });
   return `${appUrl}/pay?${query}`;
 }

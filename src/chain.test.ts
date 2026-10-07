@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Keypair, PublicKey, type TransactionInstruction } from "@solana/web3.js";
+import { Keypair, PublicKey, type GetProgramAccountsFilter, type TransactionInstruction } from "@solana/web3.js";
 import { describe, expect, it } from "vitest";
 import { createChain, promiseAddress, PROGRAM_ID, projectAddress } from "./chain.js";
 
@@ -39,6 +39,16 @@ interface FakeSignature {
   err: unknown;
 }
 
+type ProgramFilter = GetProgramAccountsFilter;
+
+/** The RPC's filter semantics: exact account size, or bytes (base58) at an offset. */
+function matches(filter: ProgramFilter, data: Buffer): boolean {
+  if ("dataSize" in filter) return data.length === filter.dataSize;
+  const { offset, bytes } = filter.memcmp;
+  const expected = new PublicKey(bytes).toBuffer();
+  return data.subarray(offset, offset + expected.length).equals(expected);
+}
+
 function fakeRpc(options: {
   accounts: Map<string, { data: Buffer }>;
   signatures?: Map<string, FakeSignature[]>;
@@ -50,6 +60,12 @@ function fakeRpc(options: {
     },
     async getSignaturesForAddress(address: PublicKey) {
       return options.signatures?.get(address.toBase58()) ?? [];
+    },
+    async getProgramAccounts(programId: PublicKey, config: { filters?: ProgramFilter[] }) {
+      if (!programId.equals(PROGRAM_ID)) return [];
+      return [...options.accounts]
+        .filter(([, account]) => (config.filters ?? []).every((filter) => matches(filter, account.data)))
+        .map(([address, account]) => ({ pubkey: new PublicKey(address), account }));
     },
   };
   const send = async (instruction: TransactionInstruction, signer: Keypair) => {
@@ -209,5 +225,52 @@ describe("chain.settle", () => {
 
     await expect(chain.settle(Number(REPO), 7, "broken")).rejects.toThrow(/promise/);
     expect(rpc.sent).toEqual([]);
+  });
+});
+
+describe("chain.countPromises", () => {
+  const REPO = 1407786691n;
+  const project = projectAddress(PROGRAM_ID, REPO);
+  const projectEntry = [project.toBase58(), projectAccount(REPO, ARBITER)] as const;
+
+  const promiseEntry = (repo: bigint, issue: bigint, state: number) =>
+    [
+      promiseAddress(PROGRAM_ID, projectAddress(PROGRAM_ID, repo), issue).toBase58(),
+      promiseAccount(repo, issue, state),
+    ] as const;
+
+  it("counts every promise, open included, and the broken ones", async () => {
+    const chain = chainWith(
+      new Map([
+        projectEntry,
+        promiseEntry(REPO, 1n, 0),
+        promiseEntry(REPO, 2n, 1),
+        promiseEntry(REPO, 3n, 2),
+        promiseEntry(REPO, 4n, 2),
+      ])
+    );
+
+    expect(await chain.countPromises(Number(REPO))).toEqual({ promises: 4, broken: 2 });
+  });
+
+  it("counts a project with no promises as zero", async () => {
+    expect(await chainWith(new Map([projectEntry])).countPromises(Number(REPO))).toEqual({
+      promises: 0,
+      broken: 0,
+    });
+  });
+
+  it("leaves out the promises of other projects", async () => {
+    const chain = chainWith(new Map([projectEntry, promiseEntry(REPO, 1n, 2), promiseEntry(99n, 1n, 2)]));
+
+    expect(await chain.countPromises(Number(REPO))).toEqual({ promises: 1, broken: 1 });
+  });
+
+  it("returns null for a repo that isn't a project of ours", async () => {
+    const other = projectAccount(REPO, Keypair.generate().publicKey);
+    const chain = chainWith(new Map([[project.toBase58(), other], promiseEntry(REPO, 1n, 2)]));
+
+    expect(await chain.countPromises(Number(REPO))).toBeNull();
+    expect(await chainWith(new Map()).countPromises(Number(REPO))).toBeNull();
   });
 });
