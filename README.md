@@ -34,7 +34,7 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | Escrow program on devnet (`escrow/`) | Done ([#2](https://github.com/sivaratrisrinivas/pinky/issues/2)) |
 | Demo repo, GitHub App, keys, deploy secrets (`scripts/setup-github-app.sh`) | Done ([#3](https://github.com/sivaratrisrinivas/pinky/issues/3)) |
 | Ask first-timers for a promise (`handleEvent`, webhook) | Done, live at https://pinky-bot.vercel.app ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4)) |
-| Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Code and tests done, not yet deployed or run on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
+| Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Done, `/spam` verified live on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
 | Pay page with Google sign-in and faucet | Live at `/pay` with the Phantom extension and verified on devnet. Email sign-in is the one open gap: Google sign-in is built but needs `PHANTOM_APP_ID` ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6)) |
 | Pay page pings the app so the label flips | Not started ([#7](https://github.com/sivaratrisrinivas/pinky/issues/7)) |
 | README badge, seed data, full-journey runs | Not started ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8), [#9](https://github.com/sivaratrisrinivas/pinky/issues/9), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
@@ -167,6 +167,7 @@ On 2026-10-08, with the App installed on `sivaratrisrinivas/pinky-demo`:
 - [Issue 1](https://github.com/sivaratrisrinivas/pinky-demo/issues/1), opened by the owner account, got no label and no comment.
 - [Issue 2](https://github.com/sivaratrisrinivas/pinky-demo/issues/2), opened by a second account with association `NONE`, got `awaiting-promise` and the comment within seconds.
 - `readProject` against the real devnet project for repo ID 1407786691 returns the project for the matching arbiter and null for any other.
+- [Issue 4](https://github.com/sivaratrisrinivas/pinky-demo/issues/4) had a promise made with `npm run promise -- 4`. The owner's `/spam` comment got the bot reply "Promise broken" with [this `forfeit` transaction](https://explorer.solana.com/tx/7SwW41UUic7s5yq6Wuk5Fpo9e4bUuwbvRzBj9XSjVFtabCjgoFipx68pdmvANfbrWY45hXGKJCBV5cqZpU7Lawp?cluster=devnet) and the `promise-broken` label. `/accept` and closes were covered by tests only.
 
 ### Known limits
 
