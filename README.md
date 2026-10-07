@@ -36,7 +36,7 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | Ask first-timers for a promise (`handleEvent`, webhook) | Done, live at https://pinky-bot.vercel.app ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4)) |
 | Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Done. `/spam`, `/accept`, an issue close and the already-settled reply ran live on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
 | Pay page with Google sign-in and faucet | Live at `/pay` with the Phantom extension and verified on devnet. Email sign-in is the one open gap: Google sign-in is built but needs `PHANTOM_APP_ID` ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6)) |
-| Pay page pings the app so the label flips | Not started ([#7](https://github.com/sivaratrisrinivas/pinky/issues/7)) |
+| Pay page pings the app so the label flips | Built and tested with fakes; `/api/check-promise` not deployed or run live yet, so the demo-repo criterion of [#7](https://github.com/sivaratrisrinivas/pinky/issues/7) is still open |
 | README badge, seed data, full-journey runs | Not started ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8), [#9](https://github.com/sivaratrisrinivas/pinky/issues/9), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 
 The spec is [#1](https://github.com/sivaratrisrinivas/pinky/issues/1) and the day-by-day plan is in [PLAN.md](PLAN.md).
@@ -49,7 +49,7 @@ escrow/                  Anchor program, tests and operator scripts
   tests/                 behaviour tests on a local validator
   scripts/               setup-project, smoke and promise, run against devnet
 api/webhook.ts           Vercel function: verifies the GitHub webhook and calls handleEvent
-api/pay.ts, faucet.ts, deposit-tx.ts   Vercel functions behind the pay page
+api/pay.ts, faucet.ts, deposit-tx.ts, check-promise.ts   Vercel functions behind the pay page
 web/pay.ts               pay page client, bundled by `npm run build` into public/pay.js
 public/pay.html          the pay page, served at /pay (see vercel.json)
 .vercelignore            keeps escrow/, scripts/ and docs/ out of deploys
@@ -142,7 +142,7 @@ For each request the function:
 
 ```bash
 npm install
-npm test          # 68 tests: handleEvent, the chain adapter, signature check, the pay page core
+npm test          # 75 tests: handleEvent, the chain adapter, signature check, the pay page core
 npm run typecheck
 ```
 
@@ -194,7 +194,21 @@ Every acceptance criterion of #5 has now run live. Closing a PR without merging 
 | --- | --- |
 | `GET /api/pay` | Status of the link: `ready`, `closed`, `promised`, `unknown-issue` or `not-a-project`. The page shows no pay button unless it is `ready`. |
 | `POST /api/faucet` | Tops a wallet up to 5 test USDC and 0.01 devnet SOL from the faucet wallet, creating its token account. Asking again sends nothing. |
+| `POST /api/check-promise` | The ping after a deposit, with `{ repo, n }`. It carries no proof and the app never trusts it (see below). |
 | `POST /api/deposit-tx` | Re-checks the status and returns an unsigned `deposit` transaction paid by the wallet. The browser signs it with the embedded wallet and sends it to devnet. |
+
+### The ping
+
+After the deposit confirms, the page posts `{ repo, n }` to `/api/check-promise`, and does the same when it opens on an issue that already has a promise, in case the first ping was lost. The function looks up the repo ID and installation through GitHub and calls `handleEvent` with a `check_promise` event. `handleEvent` reads the project and the promise from the chain and acts only on what it finds:
+
+| Chain says | Result |
+| --- | --- |
+| No promise | Nothing changes. |
+| Open promise, issue open | `awaiting-promise` is swapped for `promised`. |
+| Open promise, issue closed | The late deposit is kept right away: the bot comments the refund link and sets `promise-kept`. |
+| Settled promise | Nothing changes, so a repeated or forged ping can't undo a verdict. |
+
+Pinging twice is harmless. The `Github` port gained `isOpen` for this.
 
 The logic is in `src/pay.ts` behind three ports (GitHub, chain, faucet) with fakes in `src/pay.test.ts`. Adapters are in `src/pay-adapters.ts`.
 
