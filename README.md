@@ -34,7 +34,7 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | Escrow program on devnet (`escrow/`) | Done ([#2](https://github.com/sivaratrisrinivas/pinky/issues/2)) |
 | Demo repo, GitHub App, keys, deploy secrets (`scripts/setup-github-app.sh`) | Done ([#3](https://github.com/sivaratrisrinivas/pinky/issues/3)) |
 | Ask first-timers for a promise (`handleEvent`, webhook) | Done, live at https://pinky-bot.vercel.app ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4)) |
-| Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Done, `/spam` verified live on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
+| Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Done. `/spam` ran live on devnet, `/accept` and closes are tested with fakes only ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
 | Pay page with Google sign-in and faucet | Live at `/pay` with the Phantom extension and verified on devnet. Email sign-in is the one open gap: Google sign-in is built but needs `PHANTOM_APP_ID` ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6)) |
 | Pay page pings the app so the label flips | Not started ([#7](https://github.com/sivaratrisrinivas/pinky/issues/7)) |
 | README badge, seed data, full-journey runs | Not started ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8), [#9](https://github.com/sivaratrisrinivas/pinky/issues/9), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
