@@ -48,6 +48,9 @@ function fakes(
     async readPromise(_repoId, issueNumber) {
       return promises[issueNumber] ?? null;
     },
+    async countPromises() {
+      return null;
+    },
     async settle(repoId, issueNumber, outcome) {
       settlements.push({ repoId, issueNumber, outcome });
       return `${outcome}Sig${issueNumber}`;

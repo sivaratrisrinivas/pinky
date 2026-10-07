@@ -31,6 +31,8 @@ export interface Chain {
   readProject(repoId: number): Promise<Project | null>;
   /** The promise for an issue or PR, or null when nobody has made one. */
   readPromise(repoId: number, issueNumber: number): Promise<PromiseRecord | null>;
+  /** Every promise of a project, open ones included, and how many are broken. Null when the repo isn't one of ours. */
+  countPromises(repoId: number): Promise<{ promises: number; broken: number } | null>;
   /** Settles an open promise with the arbiter key and returns the transaction signature. */
   settle(repoId: number, issueNumber: number, outcome: Outcome): Promise<string>;
 }
