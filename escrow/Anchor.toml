@@ -18,4 +18,18 @@ wallet = "~/.config/solana/id.json"
 [scripts]
 test = "npx ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
 
+# Open promises that are already older than 30 days, for the `reclaim` tests.
+# Regenerate with `npm run fixtures`.
+[[test.validator.account]]
+address = "GoWLd8WCpxbaKVNq1VYnEcHSDnLeWeJ3n9RXVmp7axF8"
+filename = "tests/fixtures/aged-reclaimed.json"
+
+[[test.validator.account]]
+address = "jXgLuEsp8NTNHohBcxNqMVdXxjSUd2GgT34gmh658z5"
+filename = "tests/fixtures/aged-not-promiser.json"
+
+[[test.validator.account]]
+address = "9QDTy2KB4RCFQXP2GDU5o4QcBaP6qdyfUSoDrHQsgwKe"
+filename = "tests/fixtures/aged-settled.json"
+
 [hooks]

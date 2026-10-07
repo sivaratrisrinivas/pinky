@@ -35,4 +35,8 @@ pub mod escrow {
     pub fn forfeit(ctx: Context<Forfeit>) -> Result<()> {
         instructions::forfeit::handle_forfeit(ctx)
     }
+
+    pub fn reclaim(ctx: Context<Reclaim>) -> Result<()> {
+        instructions::reclaim::handle_reclaim(ctx)
+    }
 }

@@ -8,7 +8,8 @@
     "setup-project": "ts-node scripts/setup-project.ts",
     "smoke": "ts-node scripts/smoke.ts",
     "fund-faucet": "ts-node scripts/fund-faucet.ts",
-    "promise": "ts-node scripts/promise.ts"
+    "promise": "ts-node scripts/promise.ts",
+    "fixtures": "ts-node scripts/make-aged-fixtures.ts"
   },
   "dependencies": {
     "@anchor-lang/core": "^1.2.0",

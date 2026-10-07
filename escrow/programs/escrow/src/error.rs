@@ -8,4 +8,8 @@ pub enum ErrorCode {
     NotArbiter,
     #[msg("This promise is already settled")]
     PromiseSettled,
+    #[msg("Only the promiser can reclaim a promise")]
+    NotPromiser,
+    #[msg("A promise can only be reclaimed after 30 days")]
+    TooEarlyToReclaim,
 }
