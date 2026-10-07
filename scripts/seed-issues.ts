@@ -8,8 +8,8 @@
 //                       also adds the "issues are seeded" note to the demo repo's README.
 // Safe to re-run: issues whose title already exists in the repo are skipped.
 import { Octokit } from "octokit";
-import { payLink } from "../src/handle-event.js";
-import { isFirstTimer, parseTokens, planSeed, SEED_ISSUES, TOKENS_ENV, wasAsked, withSeededNote } from "../src/seed.js";
+import { FIRST_TIMER_ASSOCIATIONS, payLink } from "../src/handle-event.js";
+import { parseTokens, planSeed, SEED_ISSUES, TOKENS_ENV, wasAsked, withSeededNote } from "../src/seed.js";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -41,7 +41,7 @@ for (const { issue, account } of plan) {
   }
   const { data } = await accounts[account]!.rest.issues.create({ owner, repo: name, title: issue.title, body: issue.body });
   const association = data.author_association ?? "unknown";
-  const note = isFirstTimer(association) ? "" : ` (association ${association}: the App will ignore it)`;
+  const note = FIRST_TIMER_ASSOCIATIONS.has(association) ? "" : ` (association ${association}: the App will ignore it)`;
   console.log(`  #${data.number} as ${logins[account]}: ${issue.title}${note}`);
   opened.push(data.number);
   await sleep(3000); // stay clear of GitHub's secondary rate limit on content creation

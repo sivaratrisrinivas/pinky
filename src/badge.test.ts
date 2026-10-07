@@ -10,12 +10,16 @@ describe("renderBadge", () => {
     expect(svg.startsWith("<svg")).toBe(true);
     expect(svg).toContain('xmlns="http://www.w3.org/2000/svg"');
     expect(svg).toContain('aria-label="Pinky-protected: 12 promises, 3 broken"');
-    expect(textOf(svg)).toContain("Pinky-protected");
+    expect(textOf(svg)).toContain("Pinky-protected:");
     expect(textOf(svg)).toContain("12 promises, 3 broken");
   });
 
   it("shows zeros for a project nobody has promised to yet", () => {
     expect(textOf(renderBadge({ promises: 0, broken: 0 }))).toContain("0 promises, 0 broken");
+  });
+
+  it("says 1 promise, not 1 promises", () => {
+    expect(textOf(renderBadge({ promises: 1, broken: 1 }))).toContain("1 promise, 1 broken");
   });
 
   it("grows wider with the text so larger counts still fit", () => {
@@ -51,8 +55,7 @@ describe("badgeFor", () => {
 
     const badge = await badgeFor("acme/widgets", badgePorts);
 
-    expect(badge.status).toBe(200);
-    expect(textOf(badge.svg)).toContain("7 promises, 2 broken");
+    expect(textOf(badge)).toContain("7 promises, 2 broken");
     expect(asked).toEqual([42]);
   });
 
@@ -63,9 +66,9 @@ describe("badgeFor", () => {
       chain: { countPromises: async () => ({ promises, broken: 0 }) },
     };
 
-    expect(textOf((await badgeFor("acme/widgets", badgePorts)).svg)).toContain("2 promises, 0 broken");
+    expect(textOf(await badgeFor("acme/widgets", badgePorts))).toContain("2 promises, 0 broken");
     promises = 3;
-    expect(textOf((await badgeFor("acme/widgets", badgePorts)).svg)).toContain("3 promises, 0 broken");
+    expect(textOf(await badgeFor("acme/widgets", badgePorts))).toContain("3 promises, 0 broken");
   });
 
   it("says the repo isn't set up when it isn't a project", async () => {
@@ -73,8 +76,8 @@ describe("badgeFor", () => {
 
     const badge = await badgeFor("acme/widgets", badgePorts);
 
-    expect(badge.status).toBe(404);
-    expect(textOf(badge.svg)).toContain("not set up");
+    expect(badge).toContain("#9f9f9f");
+    expect(textOf(badge)).toContain("not set up");
   });
 
   it("says the repo isn't set up when GitHub doesn't know it, without asking the chain", async () => {
@@ -82,7 +85,7 @@ describe("badgeFor", () => {
 
     const badge = await badgeFor("acme/widgets", badgePorts);
 
-    expect(badge.status).toBe(404);
+    expect(badge).toContain("#9f9f9f");
     expect(asked).toEqual([]);
   });
 });

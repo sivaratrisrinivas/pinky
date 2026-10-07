@@ -15,6 +15,7 @@ import {
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import type { App } from "octokit";
+import { findRepoInstallation } from "./app-env.js";
 import { PROGRAM_ID, projectAddress, promiseAddress } from "./chain.js";
 import type { PayPorts, PayProject } from "./pay.js";
 
@@ -67,14 +68,12 @@ export function payChain(options: {
 export function payGithub(app: App): PayPorts["github"] {
   return {
     async getIssue(repo, number) {
-      const [owner, name] = repo.split("/");
-      if (!owner || !name) return null;
+      const found = await findRepoInstallation(app, repo);
+      if (!found) return null;
+      const [owner, name] = found.repo.full_name.split("/") as [string, string];
       try {
-        const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({ owner, repo: name });
-        const octokit = await app.getInstallationOctokit(installation.id);
-        const { data: issue } = await octokit.rest.issues.get({ owner, repo: name, issue_number: number });
-        const { data: repository } = await octokit.rest.repos.get({ owner, repo: name });
-        return { repoId: repository.id, state: issue.state === "closed" ? "closed" : "open" };
+        const { data: issue } = await found.octokit.rest.issues.get({ owner, repo: name, issue_number: number });
+        return { repoId: found.repo.id, state: issue.state === "closed" ? "closed" : "open" };
       } catch (error) {
         if ((error as { status?: number }).status === 404) return null;
         throw error;

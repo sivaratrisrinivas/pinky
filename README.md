@@ -2,7 +2,7 @@
 
 Pinky promise this isn't spam.
 
-Pinky asks first-time contributors to a GitHub repo for a small refundable deposit before a maintainer looks at their issue or PR. It keeps maintainers' time for people willing to stake something on not being spam. The money sits in a Solana escrow program until a maintainer gives a verdict.
+Pinky asks first-time contributors to a GitHub repo for a small promise (5 test USDC) before a maintainer looks at their issue or PR. It keeps maintainers' time for people willing to stake something on not being spam. The money sits in a Solana escrow program until a maintainer gives a verdict.
 
 Built for a hackathon on **Solana devnet** with a test USDC mint. Not for real money.
 
@@ -81,7 +81,7 @@ Accounts are program-derived addresses: project from `["project", repo_id]`, pro
 Known limits in v1:
 
 - `init_project` is permissionless, so anyone could create a project for a repo ID first. The app should check a project's arbiter and maintainer wallet before trusting it.
-- A refund fails for good if the promiser closes their token account after depositing. The promise can then only be broken.
+- Keeping a promise fails for good if the promiser closes their token account after making it. The promise can then only be broken.
 
 ### Develop
 
@@ -94,7 +94,7 @@ npm test          # builds, then runs the tests on a local validator
 npm run typecheck
 ```
 
-The tests call the instructions the way a client would and check balances and promise state: deposit then refund, deposit then forfeit, duplicate deposits, double settlement, non-arbiter signers, vouching, redirected destinations and cross-project substitution, plus `reclaim` before and after 30 days, on a settled promise and from a non-promiser.
+The tests call the instructions the way a client would and check balances and promise state: a promise then kept, a promise then broken, duplicate promises, double settlement, non-arbiter signers, vouching, redirected destinations and cross-project substitution, plus `reclaim` before and after 30 days, on a settled promise and from a non-promiser.
 
 A local validator can't move its clock, so the 30-day tests load three open promises that are already old (`tests/fixtures/aged-*.json`, listed in `Anchor.toml`) and pair each with a project the test creates. Regenerate them with `npm run fixtures` if the `Promise` account layout changes. The program deployed on devnet doesn't have `reclaim` until it is redeployed with `anchor deploy` (the instruction is not live on devnet yet).
 
@@ -136,19 +136,20 @@ For each request the function:
 | Settled promise, by command | "This promise was already kept/broken" with the original transaction link. No chain call. The first verdict is final. |
 | Settled promise, by close | Nothing. Closing after `/spam` is normal. |
 | No promise | Only `awaiting-promise` is removed. |
+| Another verdict lands first | The second settle fails on-chain with `PromiseSettled`. The app re-reads the promise and treats it as already settled: a command gets the "already kept/broken" reply with the winner's link, a close stays quiet, and the webhook succeeds. |
 
 `handleEvent` in `src/handle-event.ts` is the only entry point. It reaches the outside world through two ports, and the tests use in-memory fakes of both.
 
 | Port | Methods today | Real adapter |
 | --- | --- | --- |
 | `Github` | `addLabel`, `removeLabel`, `comment`, `hasWriteAccess` | `src/github.ts`, Octokit with an installation token. `hasWriteAccess` is the collaborator permission being `write` or `admin`. |
-| `Chain` | `readProject`, `readPromise`, `countPromises`, `settle` | `src/chain.ts`, decodes accounts over RPC and signs `refund` or `forfeit` with the arbiter key |
+| `Chain` | `readProject`, `readPromise`, `countPromises`, `settle` | `src/chain.ts`, decodes accounts over RPC and signs `refund` (keep) or `forfeit` (break) with the arbiter key |
 
 `readProject` returns null when the project account doesn't exist, isn't a `Project` account, or names a different arbiter than ours. The last check matters because `init_project` is permissionless. Author association comes from the webhook payload, not from an extra API call. `readPromise` returns null, `open`, or `kept`/`broken` with the latest successful transaction on the promise account, which is the settlement. `settle` rebuilds the instruction from the stored accounts, so the destination is always the promiser's token account for kept and the maintainer wallet for broken. `countPromises` asks the RPC for the promise accounts of one project (`getProgramAccounts`, filtered by size and project address) and returns how many exist and how many are broken. It returns null for a repo that isn't a project of ours, with the same arbiter check as `readProject`.
 
 ```bash
 npm install
-npm test          # 106 tests: handleEvent, the chain adapter, signature check, the pay page core, the seed script core, the badge
+npm test          # 109 tests: handleEvent, the chain adapter, signature check, the pay page core and its retrying ping, the seed script core, the badge
 npm run typecheck
 ```
 
@@ -177,24 +178,23 @@ On 2026-10-08, with the App installed on `sivaratrisrinivas/pinky-demo`:
 
 Later the same day:
 
-- [Issue 5](https://github.com/sivaratrisrinivas/pinky-demo/issues/5): a promise, then the owner's `/accept`. The bot replied "Promise kept" with [the `refund` transaction](https://explorer.solana.com/tx/2an11UeAoB3TGefTGFcSCSKqfjMSVPjG8L45PPidLZAJCYNqEWGcW4yxjwRiBTtH25ASt3i7fd6hjYRogwr778mV?cluster=devnet) and the `promise-kept` label. A `/spam` after that got "This promise was already kept" with the same link, and the label stayed.
+- [Issue 5](https://github.com/sivaratrisrinivas/pinky-demo/issues/5): a promise, then the owner's `/accept`. The bot replied "Promise kept" with [the `refund` (keep) transaction](https://explorer.solana.com/tx/2an11UeAoB3TGefTGFcSCSKqfjMSVPjG8L45PPidLZAJCYNqEWGcW4yxjwRiBTtH25ASt3i7fd6hjYRogwr778mV?cluster=devnet) and the `promise-kept` label. A `/spam` after that got "This promise was already kept" with the same link, and the label stayed.
 - [Issue 6](https://github.com/sivaratrisrinivas/pinky-demo/issues/6): a promise, then the owner closed the issue. Same "Promise kept" reply and label.
-- Both promisers' token accounts read 5 test USDC after the refund.
+- Both promisers' token accounts read 5 test USDC after their promises were kept.
 - [Issue 7](https://github.com/sivaratrisrinivas/pinky-demo/issues/7): a promise, then `/accept` from a second account without write access. The bot replied that only people with write access can settle a promise. No label was added, the issue stayed open, the promise state stayed open and the promiser's token account stayed at 0.
-- [PR 8](https://github.com/sivaratrisrinivas/pinky-demo/pull/8): a promise, then the owner merged the PR. The bot replied "Promise kept" with [the `refund` transaction](https://explorer.solana.com/tx/5sKj7KHbdnWrjt7dy22gAqTQti86jepGcDCkwvd9qPdC82JZ1yyytTTA2ytoWTNxv5jMVip6boitKpCnELfFaR3o?cluster=devnet), added `promise-kept`, and the promiser's token account read 5 test USDC.
+- [PR 8](https://github.com/sivaratrisrinivas/pinky-demo/pull/8): a promise, then the owner merged the PR. The bot replied "Promise kept" with [the `refund` (keep) transaction](https://explorer.solana.com/tx/5sKj7KHbdnWrjt7dy22gAqTQti86jepGcDCkwvd9qPdC82JZ1yyytTTA2ytoWTNxv5jMVip6boitKpCnELfFaR3o?cluster=devnet), added `promise-kept`, and the promiser's token account read 5 test USDC.
 
 Every acceptance criterion of #5 has now run live. Closing a PR without merging was not run separately, but it takes the same path as a merge.
 
 ### Known limits
 
 - A webhook retry after a failed comment can post the comment twice. Nothing checks for an existing label first.
-- Two verdicts racing, such as `/accept` and a close seconds apart, can both read the promise as open. The second chain call fails with `PromiseSettled`, the webhook returns an error, and GitHub shows a failed delivery. The money is safe.
 - The settlement link comes from `getSignaturesForAddress` on the public RPC, which only looks back 10 transactions on the promise account. A settled promise whose history the RPC can't serve gets the "already kept" reply without a link.
 - The comment says "5 USDC" as fixed text. The amount is on the project account, and the `Project` type doesn't carry it yet.
 
 ## Badge
 
-`GET /badge.svg?repo=<owner>/<name>` returns an SVG reading "Pinky-protected: N promises, M broken". N counts every promise made for the project, open ones included. M counts the broken ones. Both come from `countPromises` on the chain, so they can't drift from what happened. A repo that isn't a project gets a grey "not set up" badge with status 404. Responses are cached for 60 seconds at the edge.
+`GET /badge.svg?repo=<owner>/<name>` returns an SVG reading "Pinky-protected: N promises, M broken". N counts every promise made for the project, open ones included. M counts the broken ones. Both come from `countPromises` on the chain, so they can't drift from what happened. A repo that isn't a project gets a grey "not set up" badge, also with status 200, so a README image never breaks. One promise reads "1 promise". Responses are cached for 60 seconds at the edge.
 
 For the demo repo, paste this into its README:
 
@@ -209,7 +209,6 @@ Not done yet, so the acceptance criteria of #8 that need a live run stay open: d
 ### Known limits
 
 - `getProgramAccounts` scans the escrow program's accounts on the public RPC. That is fine for one demo project, and would need an index for many.
-- The text always reads "N promises", so one promise shows as "1 promises".
 
 ## Pay page
 
@@ -219,21 +218,23 @@ Not done yet, so the acceptance criteria of #8 that need a live run stay open: d
 | --- | --- |
 | `GET /api/pay` | Status of the link: `ready`, `closed`, `promised`, `unknown-issue` or `not-a-project`. The page shows no pay button unless it is `ready`. |
 | `POST /api/faucet` | Tops a wallet up to 5 test USDC and 0.01 devnet SOL from the faucet wallet, creating its token account. Asking again sends nothing. |
-| `POST /api/check-promise` | The ping after a deposit, with `{ repo, n }`. It carries no proof and the app never trusts it (see below). |
-| `POST /api/deposit-tx` | Re-checks the status and returns an unsigned `deposit` transaction paid by the wallet. The browser signs it with the embedded wallet and sends it to devnet. |
+| `POST /api/check-promise` | The ping after a promise, with `{ repo, n }`. It carries no proof and the app never trusts it (see below). |
+| `POST /api/deposit-tx` | Re-checks the status and returns an unsigned transaction (the `deposit` instruction) paid by the wallet. The browser signs it with the embedded wallet and sends it to devnet. |
 
 ### The ping
 
-After the deposit confirms, the page posts `{ repo, n }` to `/api/check-promise`, and does the same when it opens on an issue that already has a promise, in case the first ping was lost. The function looks up the repo ID and installation through GitHub and calls `handleEvent` with a `check_promise` event. `handleEvent` reads the project and the promise from the chain and acts only on what it finds:
+After the promise confirms, the page posts `{ repo, n }` to `/api/check-promise`, and does the same when it opens on an issue that already has a promise, in case the first ping was lost. The function looks up the repo ID and installation through GitHub and runs `checkPromise` from `src/handle-event.ts`. It reads the project and the promise from the chain and acts only on what it finds:
 
 | Chain says | Result |
 | --- | --- |
 | No promise | Nothing changes. |
 | Open promise, issue open | `awaiting-promise` is swapped for `promised`. |
-| Open promise, issue closed | The late deposit is kept right away: the bot comments the refund link and sets `promise-kept`. |
+| Open promise, issue closed | The late promise is kept right away: the bot comments the transaction link and sets `promise-kept`. |
 | Settled promise | Nothing changes, so a repeated or forged ping can't undo a verdict. |
 
 Pinging twice is harmless. The `Github` port gained `isOpen` for this.
+
+The function answers `{ ok: true, found }`, where `found` says the chain had the promise. The app reads at `confirmed` and can lag a moment behind the page's own confirmation, so the page (`pingUntilFound` in `src/ping.ts`) pings again after 1, 3 and 10 seconds until `found` is true. Errors count as "not found yet", and after the last try it gives up without telling the user, since the promise is already made.
 
 The logic is in `src/pay.ts` behind three ports (GitHub, chain, faucet) with fakes in `src/pay.test.ts`. Adapters are in `src/pay-adapters.ts`.
 
@@ -244,11 +245,11 @@ The logic is in `src/pay.ts` behind three ports (GitHub, chain, faucet) with fak
 3. Stock the faucet with test USDC: `cd escrow && npm run fund-faucet` (mints 1000 from the operator key, which is the mint authority; the faucet wallet needs devnet SOL too).
 4. Without `PHANTOM_APP_ID` the page offers only the Phantom browser extension. Nothing pretends to be email sign-in.
 
-`npm run pay-e2e -- <owner/repo> <issue>` plays the page against devnet with a throwaway wallet: faucet, deposit, then status. It needs `.env` and makes a real promise on that issue.
+`npm run pay-e2e -- <owner/repo> <issue>` plays the page against devnet with a throwaway wallet: faucet, promise, then status. It needs `.env` and makes a real promise on that issue.
 
 ### Verified live
 
-On 2026-10-08 a fresh keypair with no balance got 5 test USDC and 0.01 SOL from the faucet, a second faucet call sent nothing, and the deposit transaction built by `/api/deposit-tx`'s code signed by that wallet alone created the promise for `pinky-demo` issue 2. Then, in Chrome with the Phantom extension, a new wallet on the deployed page got test USDC from the faucet and made the promise for [`pinky-demo` issue 3](https://github.com/sivaratrisrinivas/pinky-demo/issues/3). The explorer link opens a finalized devnet transaction that called the escrow program. Phantom simulates on mainnet by default, so it showed "Failed to simulate" and needed "Confirm (unsafe)" twice. Not yet run: Google sign-in through a Phantom embedded wallet, which needs `PHANTOM_APP_ID` (the Portal wasn't accepting new accounts on 2026-10-08).
+On 2026-10-08 a fresh keypair with no balance got 5 test USDC and 0.01 SOL from the faucet, a second faucet call sent nothing, and the promise transaction built by `/api/deposit-tx`'s code signed by that wallet alone created the promise for `pinky-demo` issue 2. Then, in Chrome with the Phantom extension, a new wallet on the deployed page got test USDC from the faucet and made the promise for [`pinky-demo` issue 3](https://github.com/sivaratrisrinivas/pinky-demo/issues/3). The explorer link opens a finalized devnet transaction that called the escrow program. Phantom simulates on mainnet by default, so it showed "Failed to simulate" and needed "Confirm (unsafe)" twice. Not yet run: Google sign-in through a Phantom embedded wallet, which needs `PHANTOM_APP_ID` (the Portal wasn't accepting new accounts on 2026-10-08).
 
 ### What is left on #6
 

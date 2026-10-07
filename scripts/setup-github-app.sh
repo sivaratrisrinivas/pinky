@@ -243,7 +243,7 @@ if gh repo view "$DEMO_REPO" >/dev/null 2>&1; then
 else
   if confirm "Create public repo $DEMO_REPO now?"; then
     gh repo create "$DEMO_REPO" --public --add-readme \
-      --description "Demo repo for Pinky: refundable deposits against spam issues and PRs"
+      --description "Demo repo for Pinky: promises against spam issues and PRs"
   else
     warn "Create it yourself at https://github.com/new, then re-run."
     exit 1
@@ -408,8 +408,8 @@ note "If that URL doesn't load, find the Arena link on the hackathon's event pag
 step "Log in, open your project (or create it), and fill in the profile:"
 step "name: Pinky · tagline: pinky promise this isn't spam"
 step "repo: https://github.com/sivaratrisrinivas/pinky"
-step "description: first-time contributors post a small refundable devnet USDC deposit;"
-step "maintainers refund good-faith issues and forfeit spam."
+step "description: first-time contributors make a small devnet USDC promise;"
+step "maintainers keep good-faith promises and break spam ones."
 if ! confirm "Project profile saved on Arena?"; then
   SKIPPED+=("fill in the Colosseum Arena project profile")
 fi

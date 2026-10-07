@@ -1,17 +1,17 @@
-import { AWAITING_PROMISE_LABEL, FIRST_TIMER_ASSOCIATIONS } from "./handle-event.js";
+import { AWAITING_PROMISE_LABEL } from "./handle-event.js";
 
 export const TOKENS_ENV = "SEED_GITHUB_TOKENS";
+
+export interface SeedIssue {
+  title: string;
+  body: string;
+}
 
 /** Splits a list of test-account tokens on commas and whitespace, dropping blanks and repeats. */
 export function parseTokens(raw: string | undefined): string[] {
   const tokens = [...new Set((raw ?? "").split(/[\s,]+/).filter(Boolean))];
   if (tokens.length === 0) throw new Error(`Set ${TOKENS_ENV} to one or more test-account tokens, comma separated`);
   return tokens;
-}
-
-/** Whether the App would ask an author with this association for a promise. */
-export function isFirstTimer(association: string): boolean {
-  return FIRST_TIMER_ASSOCIATIONS.has(association);
 }
 
 const SEEDED_NOTE = `## About the issues here
@@ -52,12 +52,12 @@ export const SEED_ISSUES: SeedIssue[] = [
     body: "On a 320px wide screen the Make the promise button runs off the right edge and I have to scroll sideways to tap it. Checked on an older iPhone SE in Safari. The rest of the page looks fine.",
   },
   {
-    title: "Feature request: show the refund transaction link on the issue page",
+    title: "Feature request: show the settlement transaction link on the issue page",
     body: "After a promise is kept it would be nice to see the explorer link right where the label changes, not only in a comment further down a long thread. Maybe the bot could edit its first comment with the result. Not urgent, just an idea from watching a few issues settle.",
   },
   {
     title: "Docs: explain what happens if I close my own issue",
-    body: "I opened an issue by mistake and closed it myself. I wasn't sure if my deposit was gone. The docs describe /accept and /spam but not this case. Could you add a short paragraph on who can settle a promise?",
+    body: "I opened an issue by mistake and closed it myself. I wasn't sure what happens to my promise. The docs describe /accept and /spam but not this case. Could you add a short paragraph on who can settle a promise?",
   },
   {
     title: "Broken link to the glossary in the README",
@@ -80,11 +80,6 @@ export function wasAsked(state: IssueState, payLink: string): boolean {
     state.labels.includes(AWAITING_PROMISE_LABEL) &&
     state.comments.some((c) => c.userType === "Bot" && c.body.includes(`(${payLink})`))
   );
-}
-
-export interface SeedIssue {
-  title: string;
-  body: string;
 }
 
 export interface PlannedIssue {

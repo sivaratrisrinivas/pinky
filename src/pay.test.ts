@@ -145,7 +145,7 @@ describe("prepareDeposit", () => {
 });
 
 describe("buildDepositTransaction", () => {
-  it("creates the token account if needed, then deposits for the issue number", () => {
+  it("creates the token account if needed, then makes the promise for the issue number", () => {
     const wallet = Keypair.generate().publicKey;
     const tx = buildDepositTransaction({
       wallet,

@@ -1,5 +1,6 @@
 import { AddressType, BrowserSDK } from "@phantom/browser-sdk";
 import { Connection, Transaction } from "@solana/web3.js";
+import { pingUntilFound } from "../src/ping.js";
 
 const DEVNET_RPC = "https://api.devnet.solana.com";
 const explorerTx = (signature: string) => `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
@@ -55,13 +56,9 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return result;
 }
 
-/** Asks the app to look at the chain and update the label. Best effort: the promise is already made. */
-async function pingApp(): Promise<void> {
-  try {
-    await post("/api/check-promise", { repo, n: Number(number) });
-  } catch {
-    // Opening the page again pings once more, and a maintainer's verdict fixes the labels anyway.
-  }
+/** Asks the app to look at the chain and update the label, retrying while it can't see the promise yet. */
+function pingApp(): Promise<void> {
+  return pingUntilFound(() => post("/api/check-promise", { repo, n: Number(number) }));
 }
 
 function bytesFromBase64(value: string): Uint8Array {

@@ -1,7 +1,8 @@
 // Plays the pay page against devnet with a throwaway wallet standing in for the embedded wallet.
 // Usage: npm run pay-e2e -- <owner/repo> <issue number>
 // Reads the same env as the Vercel functions (run with --env-file=.env).
-import { Connection, Keypair, Transaction } from "@solana/web3.js";
+import { Keypair, Transaction } from "@solana/web3.js";
+import { rpcConnection } from "../src/app-env.js";
 import { payStatus, prepareDeposit, requestFaucet } from "../src/pay.js";
 import { payPortsFromEnv } from "../src/pay-wiring.js";
 
@@ -10,7 +11,7 @@ if (!repo || !issue) throw new Error("Usage: pay-e2e <owner/repo> <issue number>
 const number = Number(issue);
 
 const ports = payPortsFromEnv();
-const connection = new Connection(process.env.RPC_URL ?? "https://api.devnet.solana.com", "confirmed");
+const connection = rpcConnection();
 const wallet = Keypair.generate();
 
 console.log("status before:", await payStatus({ repo, number }, ports));

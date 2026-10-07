@@ -8,7 +8,7 @@ export interface BadgePorts {
   chain: Pick<Chain, "countPromises">;
 }
 
-const LABEL = "Pinky-protected";
+const LABEL = "Pinky-protected:";
 const CHAR_WIDTH = 6.6;
 const PADDING = 10;
 
@@ -23,8 +23,8 @@ function svgBadge(label: string, value: string, color: string): string {
   const text = (content: string, centre: number) =>
     `<text x="${centre}" y="14">${content}</text>`;
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="20" role="img" aria-label="${label}: ${value}">` +
-    `<title>${label}: ${value}</title>` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="20" role="img" aria-label="${label} ${value}">` +
+    `<title>${label} ${value}</title>` +
     `<clipPath id="r"><rect width="${width}" height="20" rx="3"/></clipPath>` +
     `<g clip-path="url(#r)"><rect width="${labelWidth}" height="20" fill="#555"/>` +
     `<rect x="${labelWidth}" width="${valueWidth}" height="20" fill="${color}"/></g>` +
@@ -35,13 +35,16 @@ function svgBadge(label: string, value: string, color: string): string {
 
 /** The README badge: "Pinky-protected: N promises, M broken". */
 export function renderBadge(counts: { promises: number; broken: number }): string {
-  return svgBadge(LABEL, `${counts.promises} promises, ${counts.broken} broken`, "#4c1");
+  const noun = counts.promises === 1 ? "promise" : "promises";
+  return svgBadge(LABEL, `${counts.promises} ${noun}, ${counts.broken} broken`, "#4c1");
 }
 
-/** The badge for a repo, with counts read from the chain. A repo that isn't a project gets a grey 404 badge. */
-export async function badgeFor(repo: string, ports: BadgePorts): Promise<{ status: 200 | 404; svg: string }> {
+/**
+ * The badge for a repo, with counts read from the chain. A repo that isn't a project gets a grey "not set up"
+ * badge, still as a normal image, so a README pointing at it never shows a broken image.
+ */
+export async function badgeFor(repo: string, ports: BadgePorts): Promise<string> {
   const repoId = await ports.github.getRepoId(repo);
   const counts = repoId === null ? null : await ports.chain.countPromises(repoId);
-  if (!counts) return { status: 404, svg: svgBadge(LABEL, "not set up", "#9f9f9f") };
-  return { status: 200, svg: renderBadge(counts) };
+  return counts ? renderBadge(counts) : svgBadge(LABEL, "not set up", "#9f9f9f");
 }

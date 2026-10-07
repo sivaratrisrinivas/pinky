@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isFirstTimer, parseTokens, planSeed, SEED_ISSUES, wasAsked, withSeededNote, type SeedIssue } from "./seed.js";
+import { parseTokens, planSeed, SEED_ISSUES, wasAsked, withSeededNote, type SeedIssue } from "./seed.js";
 
 const issue = (title: string): SeedIssue => ({ title, body: `Body of ${title}` });
 
@@ -63,7 +63,7 @@ describe("wasAsked", () => {
 });
 
 describe("withSeededNote", () => {
-  const readme = "# pinky-demo\nDemo repo for Pinky: refundable deposits against spam issues and PRs\n";
+  const readme = "# pinky-demo\nDemo repo for Pinky: promises against spam issues and PRs\n";
 
   it("adds a note saying the issues are seeded and keeps the README as it was", () => {
     const updated = withSeededNote(readme);
@@ -90,15 +90,5 @@ describe("SEED_ISSUES", () => {
 
   it("never carries a verdict command, which only counts in comments but would read as one", () => {
     for (const { body } of SEED_ISSUES) expect(body).not.toMatch(/^\s*\/(accept|spam)\b/m);
-  });
-});
-
-describe("isFirstTimer", () => {
-  it.each(["NONE", "FIRST_TIMER", "FIRST_TIME_CONTRIBUTOR"])("%s is asked for a promise", (association) => {
-    expect(isFirstTimer(association)).toBe(true);
-  });
-
-  it.each(["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR"])("%s is left alone", (association) => {
-    expect(isFirstTimer(association)).toBe(false);
   });
 });
