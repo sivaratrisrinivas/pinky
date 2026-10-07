@@ -11,7 +11,7 @@ import {
   createAssociatedTokenAccountIdempotentInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
-import { PROGRAM_ID } from "./chain.js";
+import { PROGRAM_ID, promiseAddress } from "./chain.js";
 import type { PayProject } from "./pay.js";
 
 const DEPOSIT_DISCRIMINATOR = createHash("sha256").update("global:deposit").digest().subarray(0, 8);
@@ -30,10 +30,7 @@ export function buildDepositTransaction(options: {
 }): Transaction {
   const { wallet, project, issueNumber } = options;
   const walletToken = getAssociatedTokenAddressSync(project.mint, wallet);
-  const [promise] = PublicKey.findProgramAddressSync(
-    [Buffer.from("promise"), project.address.toBuffer(), u64(issueNumber)],
-    PROGRAM_ID
-  );
+  const promise = promiseAddress(PROGRAM_ID, project.address, BigInt(issueNumber));
   const [vault] = PublicKey.findProgramAddressSync(
     [Buffer.from("vault"), project.address.toBuffer()],
     PROGRAM_ID

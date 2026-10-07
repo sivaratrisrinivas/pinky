@@ -15,7 +15,7 @@ import {
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import type { App } from "octokit";
-import { PROGRAM_ID, projectAddress } from "./chain.js";
+import { PROGRAM_ID, projectAddress, promiseAddress } from "./chain.js";
 import type { PayPorts, PayProject } from "./pay.js";
 
 interface AccountReader {
@@ -56,12 +56,7 @@ export function payChain(options: {
     },
     async promiseExists(repoId, issueNumber) {
       const project = projectAddress(PROGRAM_ID, BigInt(repoId));
-      const seed = Buffer.alloc(8);
-      seed.writeBigUInt64LE(BigInt(issueNumber));
-      const [promise] = PublicKey.findProgramAddressSync(
-        [Buffer.from("promise"), project.toBuffer(), seed],
-        PROGRAM_ID
-      );
+      const promise = promiseAddress(PROGRAM_ID, project, BigInt(issueNumber));
       const account = await options.connection.getAccountInfo(promise);
       return account !== null && Buffer.from(account.data).subarray(0, 8).equals(PROMISE_DISCRIMINATOR);
     },
@@ -99,8 +94,12 @@ export function payFaucet(options: {
   return {
     async balances(wallet) {
       const lamports = BigInt(await connection.getBalance(wallet));
-      const token = await connection.getTokenAccountBalance(tokenAccount(wallet)).catch(() => null);
-      return { lamports, usdc: BigInt(token?.value.amount ?? 0) };
+      const address = tokenAccount(wallet);
+      // Only a missing token account counts as zero: an RPC failure must not make the faucet over-send.
+      const usdc = (await connection.getAccountInfo(address))
+        ? BigInt((await connection.getTokenAccountBalance(address)).value.amount)
+        : 0n;
+      return { lamports, usdc };
     },
     async send({ wallet, usdc, lamports }) {
       const transaction = new Transaction();

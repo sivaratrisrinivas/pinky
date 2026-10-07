@@ -9,7 +9,7 @@ Built for a hackathon on **Solana devnet** with a test USDC mint. Not for real m
 ## How it works
 
 1. A first-timer opens an issue or PR on a project. The Pinky GitHub App labels it `awaiting-promise` and comments a friendly pay link.
-2. They sign in with only an email on the pay page, get test USDC and make a 5 USDC **promise**. The label flips to `promised`.
+2. They sign in on the pay page with a Google account (Phantom Connect has no bare-email option yet; see Known limits), get test USDC and make a 5 USDC **promise**. The label flips to `promised`.
 3. A maintainer closes the issue or comments `/accept`, and the promise is **kept**: the money goes back to whoever paid. If the maintainer comments `/spam`, the promise is **broken** and the money goes to the project's maintainer wallet.
 4. The bot comments the transaction link either way.
 
@@ -35,7 +35,8 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | Demo repo, GitHub App, keys, deploy secrets (`scripts/setup-github-app.sh`) | Done ([#3](https://github.com/sivaratrisrinivas/pinky/issues/3)) |
 | Ask first-timers for a promise (`handleEvent`, webhook) | Done, live at https://pinky-bot.vercel.app ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4)) |
 | Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Code and tests done, not yet deployed or run on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
-| Pay page with email sign-in and faucet | Not started ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6), [#7](https://github.com/sivaratrisrinivas/pinky/issues/7)) |
+| Pay page with Google sign-in and faucet | Built and verified on devnet with a throwaway wallet; needs `PHANTOM_APP_ID` to sign in with Google ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6)) |
+| Pay page pings the app so the label flips | Not started ([#7](https://github.com/sivaratrisrinivas/pinky/issues/7)) |
 | README badge, seed data, full-journey runs | Not started ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8), [#9](https://github.com/sivaratrisrinivas/pinky/issues/9), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 
 The spec is [#1](https://github.com/sivaratrisrinivas/pinky/issues/1) and the day-by-day plan is in [PLAN.md](PLAN.md).
@@ -48,6 +49,9 @@ escrow/                  Anchor program, tests and operator scripts
   tests/                 behaviour tests on a local validator
   scripts/               setup-project, smoke and promise, run against devnet
 api/webhook.ts           Vercel function: verifies the GitHub webhook and calls handleEvent
+api/pay.ts, faucet.ts, deposit-tx.ts   Vercel functions behind the pay page
+web/pay.ts               pay page client, bundled by `npm run build` into public/pay.js
+public/pay.html          the pay page, served at /pay (see vercel.json)
 .vercelignore            keeps escrow/, scripts/ and docs/ out of deploys
 src/                     handleEvent and its GitHub and chain ports, plus the real adapters
 scripts/                 setup-github-app.sh, the human-only setup wizard
@@ -167,10 +171,42 @@ On 2026-10-08, with the App installed on `sivaratrisrinivas/pinky-demo`:
 ### Known limits
 
 - A webhook retry after a failed comment can post the comment twice. Nothing checks for an existing label first.
-- The pay link points at `/pay`, which doesn't exist until [#6](https://github.com/sivaratrisrinivas/pinky/issues/6).
 - Two verdicts racing, such as `/accept` and a close seconds apart, can both read the promise as open. The second chain call fails with `PromiseSettled`, the webhook returns an error, and GitHub shows a failed delivery. The money is safe.
 - The settlement link comes from `getSignaturesForAddress` on the public RPC, which only looks back 10 transactions on the promise account. A settled promise whose history the RPC can't serve gets the "already kept" reply without a link.
 - The comment says "5 USDC" as fixed text. The amount is on the project account, and the `Project` type doesn't carry it yet.
+
+## Pay page
+
+`/pay?repo=<owner>/<name>&n=<number>` is where the bot's link lands. The page shows the issue and the amount, then: sign in, **Get test USDC**, **Make the promise**, and a Solana Explorer link.
+
+| Function | What it does |
+| --- | --- |
+| `GET /api/pay` | Status of the link: `ready`, `closed`, `promised`, `unknown-issue` or `not-a-project`. The page shows no pay button unless it is `ready`. |
+| `POST /api/faucet` | Tops a wallet up to 5 test USDC and 0.01 devnet SOL from the faucet wallet, creating its token account. Asking again sends nothing. |
+| `POST /api/deposit-tx` | Re-checks the status and returns an unsigned `deposit` transaction paid by the wallet. The browser signs it with the embedded wallet and sends it to devnet. |
+
+The logic is in `src/pay.ts` behind three ports (GitHub, chain, faucet) with fakes in `src/pay.test.ts`. Adapters are in `src/pay-adapters.ts`.
+
+### Set up sign-in
+
+1. Create an app at https://phantom.com/portal. Allow the origin `https://pinky-bot.vercel.app` and the redirect URL `https://pinky-bot.vercel.app/pay`.
+2. Set `PHANTOM_APP_ID` on the Vercel project. Also set `FAUCET_SECRET_KEY` (same JSON array format as `ARBITER_SECRET_KEY`). `USDC_MINT` is optional and defaults to the demo mint.
+3. Stock the faucet with test USDC: `cd escrow && npm run fund-faucet` (mints 1000 from the operator key, which is the mint authority; the faucet wallet needs devnet SOL too).
+4. Without `PHANTOM_APP_ID` the page offers only the Phantom browser extension. Nothing pretends to be email sign-in.
+
+`npm run pay-e2e -- <owner/repo> <issue>` plays the page against devnet with a throwaway wallet: faucet, deposit, then status. It needs `.env` and makes a real promise on that issue.
+
+### Verified live
+
+On 2026-10-08 a fresh keypair with no balance got 5 test USDC and 0.01 SOL from the faucet, a second faucet call sent nothing, and the deposit transaction built by `/api/deposit-tx`'s code signed by that wallet alone created the promise for `pinky-demo` issue 2. Not yet run: the page in a browser with a real Phantom embedded wallet, which needs `PHANTOM_APP_ID`.
+
+### Known limits
+
+- Sign-in is Google, not a bare email: `@phantom/browser-sdk` 2.0.4 offers Google, Apple, the Phantom app and the extension. Email sign-in is next.
+- The faucet has no rate limit. A wallet can ask again after it spends its USDC, and anyone can make fresh wallets. It is devnet money, but the faucet wallet's SOL is finite.
+- Two simultaneous faucet calls for one wallet can both send.
+- The page sends the signed transaction to the public devnet RPC, while the functions use `RPC_URL`.
+- Each status check makes three GitHub calls to find the repo ID and issue state.
 
 ## Not in v1
 

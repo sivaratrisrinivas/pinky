@@ -4,6 +4,7 @@ import { buildDepositTransaction } from "./deposit-tx.js";
 import {
   FAUCET_LAMPORTS,
   FAUCET_USDC,
+  InvalidWalletError,
   payStatus,
   prepareDeposit,
   requestFaucet,
@@ -118,7 +119,7 @@ describe("requestFaucet", () => {
 
   it("rejects something that isn't a wallet address", async () => {
     const { ports, sends } = fakePorts();
-    await expect(requestFaucet("not-a-key", ports)).rejects.toThrow(/wallet/i);
+    await expect(requestFaucet("not-a-key", ports)).rejects.toBeInstanceOf(InvalidWalletError);
     expect(sends).toEqual([]);
   });
 });

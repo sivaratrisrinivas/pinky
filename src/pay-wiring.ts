@@ -1,7 +1,7 @@
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { App } from "octokit";
 import { payChain, payFaucet, payGithub } from "./pay-adapters.js";
-import type { PayPorts } from "./pay.js";
+import type { IssueRef, PayPorts } from "./pay.js";
 
 /** Test USDC mint of the demo project on devnet. */
 const DEFAULT_MINT = "BATkjUKVJzLi3YNT7wKvmA6Eh3rkN9wuCpgCNnzL9Wn3";
@@ -50,7 +50,7 @@ export function json(body: unknown, status = 200): Response {
 }
 
 /** Parses `owner/name` and an issue number, or null when either is malformed. */
-export function parseIssueRef(repo: unknown, number: unknown): { repo: string; number: number } | null {
+export function parseIssueRef(repo: unknown, number: unknown): IssueRef | null {
   const n = Number(number);
   if (typeof repo !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(repo)) return null;
   if (!Number.isSafeInteger(n) || n < 1) return null;

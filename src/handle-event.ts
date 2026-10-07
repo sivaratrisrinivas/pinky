@@ -164,5 +164,5 @@ function payLink(appUrl: string, repo: string, number: number): string {
 }
 
 function promiseAsk(link: string): string {
-  return `Thanks for opening this! Pinky promise it isn't spam? This project asks first-time contributors for a small refundable deposit of 5 USDC. You get it back when this is closed, unless a maintainer marks it as spam. [Make the promise: 30 seconds, email sign-in](${link}) · Can't pay? Anyone, like a contributor who knows you, can make the promise for you with the same link.`;
+  return `Thanks for opening this! Pinky promise it isn't spam? This project asks first-time contributors for a small refundable deposit of 5 USDC. You get it back when this is closed, unless a maintainer marks it as spam. [Make the promise: 30 seconds, sign in with Google](${link}) · Can't pay? Anyone, like a contributor who knows you, can make the promise for you with the same link.`;
 }

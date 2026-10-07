@@ -6,6 +6,18 @@ export const FAUCET_USDC = 5_000_000n;
 /** Covers the promise account's rent, the token account's rent and fees. */
 export const FAUCET_LAMPORTS = 10_000_000n;
 
+export interface IssueRef {
+  /** `owner/name`. */
+  repo: string;
+  number: number;
+}
+
+export class InvalidWalletError extends Error {
+  constructor() {
+    super("Invalid wallet address");
+  }
+}
+
 export interface PayProject {
   repoId: number;
   /** The project account's address. */
@@ -44,7 +56,7 @@ export type PayRefusal = "closed" | "promised" | "unknown-issue" | "not-a-projec
 export type PayStatus = { state: "ready"; amount: string; mint: string } | { state: PayRefusal };
 
 async function check(
-  request: { repo: string; number: number },
+  request: IssueRef,
   ports: PayPorts
 ): Promise<{ refusal: PayRefusal } | { project: PayProject }> {
   const issue = await ports.github.getIssue(request.repo, request.number);
@@ -57,7 +69,7 @@ async function check(
 }
 
 export async function payStatus(
-  request: { repo: string; number: number },
+  request: IssueRef,
   ports: PayPorts
 ): Promise<PayStatus> {
   const result = await check(request, ports);
@@ -66,7 +78,7 @@ export async function payStatus(
 }
 
 export async function prepareDeposit(
-  request: { repo: string; number: number; wallet: string },
+  request: IssueRef & { wallet: string },
   ports: PayPorts
 ): Promise<{ state: "ready"; transaction: string } | { state: PayRefusal }> {
   const wallet = parseWallet(request.wallet);
@@ -105,6 +117,6 @@ function parseWallet(wallet: string): PublicKey {
   try {
     return new PublicKey(wallet);
   } catch {
-    throw new Error("Invalid wallet address");
+    throw new InvalidWalletError();
   }
 }

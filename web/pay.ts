@@ -113,20 +113,19 @@ function showPromiseSteps(sdk: BrowserSDK, wallet: string) {
 
 async function makePromise(sdk: BrowserSDK, wallet: string) {
   say("Waiting for your wallet to sign…");
-  const prepared = await post<{ state: string; transaction?: string }>("/api/deposit-tx", {
+  const prepared = await post<{ state: "ready"; transaction: string } | { state: Refusal }>("/api/deposit-tx", {
     repo,
     n: Number(number),
     wallet,
   });
-  if (prepared.state !== "ready" || !prepared.transaction) {
-    return say(MESSAGES[prepared.state as Refusal] ?? "Can't make this promise right now.");
-  }
+  if (prepared.state !== "ready") return say(MESSAGES[prepared.state]);
 
   const signed = await sdk.solana.signTransaction(Transaction.from(bytesFromBase64(prepared.transaction)));
   const connection = new Connection(DEVNET_RPC, "confirmed");
-  const signature = await connection.sendRawTransaction((signed as Transaction).serialize());
+  const signature = await connection.sendRawTransaction(signed.serialize());
   say("Sent. Confirming…");
-  await connection.confirmTransaction(signature, "confirmed");
+  const { value } = await connection.confirmTransaction(signature, "confirmed");
+  if (value.err) throw new Error("The promise didn't go through. Nothing was taken from you; try again.");
 
   say("Promise made. Thank you!", "done");
   const link = document.createElement("a");

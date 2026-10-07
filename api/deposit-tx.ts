@@ -1,4 +1,4 @@
-import { prepareDeposit } from "../src/pay.js";
+import { InvalidWalletError, prepareDeposit } from "../src/pay.js";
 import { json, parseIssueRef, payPortsFromEnv } from "../src/pay-wiring.js";
 
 export async function POST(request: Request): Promise<Response> {
@@ -8,7 +8,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     return json(await prepareDeposit({ ...ref, wallet: body.wallet }, payPortsFromEnv()));
   } catch (error) {
-    if (error instanceof Error && error.message === "Invalid wallet address") {
+    if (error instanceof InvalidWalletError) {
       return json({ error: error.message }, 400);
     }
     throw error;
