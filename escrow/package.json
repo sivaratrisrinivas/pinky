@@ -7,6 +7,7 @@
     "typecheck": "tsc --noEmit -p .",
     "setup-project": "ts-node scripts/setup-project.ts",
     "smoke": "ts-node scripts/smoke.ts",
+    "fund-faucet": "ts-node scripts/fund-faucet.ts",
     "promise": "ts-node scripts/promise.ts"
   },
   "dependencies": {

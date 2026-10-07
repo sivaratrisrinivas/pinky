@@ -4,9 +4,12 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "pay-e2e": "esbuild scripts/pay-e2e.ts --bundle --platform=node --format=esm --packages=external --outfile=.pay-e2e.mjs --log-level=warning && node --env-file=.env .pay-e2e.mjs",
+    "build": "esbuild web/pay.ts --bundle --minify --format=iife --platform=browser --target=es2022 --inject:web/buffer-shim.js --define:global=globalThis --outfile=public/pay.js"
   },
   "dependencies": {
+    "@phantom/browser-sdk": "^2.0.4",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
     "octokit": "^5.0.5"
