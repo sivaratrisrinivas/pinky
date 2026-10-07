@@ -5,7 +5,7 @@ export const PROMISED_LABEL = "promised";
 export const KEPT_LABEL = "promise-kept";
 export const BROKEN_LABEL = "promise-broken";
 
-const FIRST_TIMER_ASSOCIATIONS = new Set(["NONE", "FIRST_TIMER", "FIRST_TIME_CONTRIBUTOR"]);
+export const FIRST_TIMER_ASSOCIATIONS = new Set(["NONE", "FIRST_TIMER", "FIRST_TIME_CONTRIBUTOR"]);
 
 export interface Github {
   addLabel(repo: string, number: number, label: string): Promise<void>;
@@ -158,7 +158,7 @@ function settlementNotice(outcome: Outcome, signature: string): string {
     : `Promise broken. It went to the maintainer wallet.${transactionLink(signature, " ", "")}`;
 }
 
-function payLink(appUrl: string, repo: string, number: number): string {
+export function payLink(appUrl: string, repo: string, number: number): string {
   const query = new URLSearchParams({ repo, n: String(number) });
   return `${appUrl}/pay?${query}`;
 }
