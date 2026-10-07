@@ -35,7 +35,7 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | Demo repo, GitHub App, keys, deploy secrets (`scripts/setup-github-app.sh`) | Done ([#3](https://github.com/sivaratrisrinivas/pinky/issues/3)) |
 | Ask first-timers for a promise (`handleEvent`, webhook) | Done, live at https://pinky-bot.vercel.app ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4)) |
 | Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Code and tests done, not yet deployed or run on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
-| Pay page with Google sign-in and faucet | Built and verified on devnet with a throwaway wallet; needs `PHANTOM_APP_ID` to sign in with Google ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6)) |
+| Pay page with Google sign-in and faucet | Live at `/pay` with the Phantom extension and verified on devnet; Google sign-in needs `PHANTOM_APP_ID` ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6)) |
 | Pay page pings the app so the label flips | Not started ([#7](https://github.com/sivaratrisrinivas/pinky/issues/7)) |
 | README badge, seed data, full-journey runs | Not started ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8), [#9](https://github.com/sivaratrisrinivas/pinky/issues/9), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 
@@ -198,7 +198,7 @@ The logic is in `src/pay.ts` behind three ports (GitHub, chain, faucet) with fak
 
 ### Verified live
 
-On 2026-10-08 a fresh keypair with no balance got 5 test USDC and 0.01 SOL from the faucet, a second faucet call sent nothing, and the deposit transaction built by `/api/deposit-tx`'s code signed by that wallet alone created the promise for `pinky-demo` issue 2. Not yet run: the page in a browser with a real Phantom embedded wallet, which needs `PHANTOM_APP_ID`.
+On 2026-10-08 a fresh keypair with no balance got 5 test USDC and 0.01 SOL from the faucet, a second faucet call sent nothing, and the deposit transaction built by `/api/deposit-tx`'s code signed by that wallet alone created the promise for `pinky-demo` issue 2. Then, in Chrome with the Phantom extension, a new wallet on the deployed page got test USDC from the faucet and made the promise for [`pinky-demo` issue 3](https://github.com/sivaratrisrinivas/pinky-demo/issues/3). The explorer link opens a finalized devnet transaction that called the escrow program. Phantom simulates on mainnet by default, so it showed "Failed to simulate" and needed "Confirm (unsafe)" twice. Not yet run: Google sign-in through a Phantom embedded wallet, which needs `PHANTOM_APP_ID` (the Portal wasn't accepting new accounts on 2026-10-08).
 
 ### Known limits
 
