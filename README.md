@@ -45,7 +45,7 @@ The spec is [#1](https://github.com/sivaratrisrinivas/pinky/issues/1) and the da
 
 ```
 escrow/                  Anchor program, tests and operator scripts
-  programs/escrow/       init_project, deposit, refund, forfeit
+  programs/escrow/       init_project, deposit, refund, forfeit, reclaim
   tests/                 behaviour tests on a local validator
   scripts/               setup-project, smoke and promise, run against devnet
 api/webhook.ts           Vercel function: verifies the GitHub webhook and calls handleEvent
@@ -71,6 +71,7 @@ Program ID `2nAVrgq7xYseUPES5ZUxfQ2pKcyWkiRJNxbgAWca7FCU`, deployed on devnet. I
 | `deposit(issue_number)` | promiser | Creates the promise for one issue or PR number and moves the amount into the vault. Fails if one already exists. |
 | `refund` | arbiter | Keeps the promise: vault to the promiser's token account. |
 | `forfeit` | arbiter | Breaks the promise: vault to the maintainer wallet. |
+| `reclaim` | promiser | Stretch ([#10](https://github.com/sivaratrisrinivas/pinky/issues/10)). Takes back an open promise more than 30 days old, so an absent maintainer can't lock the money: vault to the promiser's token account, marked kept. Fails on a younger or settled promise, and for any other signer. |
 
 Accounts are program-derived addresses: project from `["project", repo_id]`, promise from `["promise", project, issue_number]`, vault from `["vault", project]` (owned by the project). Settled promises stay on-chain as `Kept` or `Broken`, so the app can read them later for "already settled" replies and badge counts.
 
@@ -90,7 +91,9 @@ npm test          # builds, then runs the tests on a local validator
 npm run typecheck
 ```
 
-The tests call the instructions the way a client would and check balances and promise state: deposit then refund, deposit then forfeit, duplicate deposits, double settlement, non-arbiter signers, vouching, redirected destinations and cross-project substitution.
+The tests call the instructions the way a client would and check balances and promise state: deposit then refund, deposit then forfeit, duplicate deposits, double settlement, non-arbiter signers, vouching, redirected destinations and cross-project substitution, plus `reclaim` before and after 30 days, on a settled promise and from a non-promiser.
+
+A local validator can't move its clock, so the 30-day tests load three open promises that are already old (`tests/fixtures/aged-*.json`, listed in `Anchor.toml`) and pair each with a project the test creates. Regenerate them with `npm run fixtures` if the `Promise` account layout changes. The program deployed on devnet doesn't have `reclaim` until it is redeployed with `anchor deploy` (the instruction is not live on devnet yet).
 
 ### Deploy and run on devnet
 
