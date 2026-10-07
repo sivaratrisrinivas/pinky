@@ -1,5 +1,8 @@
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import { App } from "octokit";
+import { createChain, sendWith } from "./chain.js";
+import { githubFor } from "./github.js";
+import type { PinkyEvent, Ports } from "./handle-event.js";
 import { payChain, payFaucet, payGithub } from "./pay-adapters.js";
 import type { IssueRef, PayPorts } from "./pay.js";
 
@@ -35,6 +38,41 @@ export function payPortsFromEnv(): PayPorts {
       return (await connection.getLatestBlockhash("confirmed")).blockhash;
     },
   };
+}
+
+/**
+ * Turns the pay page's ping into an event and the ports to handle it with, or null when GitHub doesn't know
+ * the issue. The ping is only a hint to look: everything handleEvent acts on is read from GitHub and the chain.
+ */
+export async function checkPromiseFromEnv(
+  ref: IssueRef
+): Promise<{ event: PinkyEvent; ports: Ports } | null> {
+  const [owner, name] = ref.repo.split("/") as [string, string];
+  const app = new App({
+    appId: env("GITHUB_APP_ID"),
+    privateKey: Buffer.from(env("GITHUB_APP_PRIVATE_KEY_BASE64"), "base64").toString("utf8"),
+  });
+  try {
+    const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({ owner, repo: name });
+    const octokit = await app.getInstallationOctokit(installation.id);
+    const { data: repository } = await octokit.rest.repos.get({ owner, repo: name });
+    const connection = new Connection(process.env.RPC_URL ?? DEFAULT_RPC, "confirmed");
+    return {
+      event: {
+        name: "check_promise",
+        repo: { id: repository.id, full_name: repository.full_name },
+        number: ref.number,
+      },
+      ports: {
+        github: githubFor(app, installation.id),
+        chain: createChain({ arbiter: keypair("ARBITER_SECRET_KEY"), connection, send: sendWith(connection) }),
+        appUrl: `https://${env("VERCEL_PROJECT_PRODUCTION_URL")}`,
+      },
+    };
+  } catch (error) {
+    if ((error as { status?: number }).status === 404) return null;
+    throw error;
+  }
 }
 
 /** What the browser needs to start Phantom Connect. Null until the Portal app exists. */

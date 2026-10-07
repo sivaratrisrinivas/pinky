@@ -2,7 +2,7 @@ import { Keypair, Connection } from "@solana/web3.js";
 import { App } from "octokit";
 import { createChain, sendWith } from "../src/chain.js";
 import { githubFor } from "../src/github.js";
-import { handleEvent, type PinkyEvent } from "../src/handle-event.js";
+import { handleEvent, type WebhookEvent } from "../src/handle-event.js";
 import { verifySignature } from "../src/signature.js";
 
 function env(name: string): string {
@@ -21,7 +21,7 @@ export async function POST(request: Request): Promise<Response> {
   if (name !== "issues" && name !== "pull_request" && name !== "issue_comment") {
     return new Response("Ignored", { status: 202 });
   }
-  const event = { name, payload: JSON.parse(body) } as PinkyEvent;
+  const event = { name, payload: JSON.parse(body) } as WebhookEvent;
   const installationId = event.payload.installation?.id;
   if (installationId === undefined) return new Response("No installation", { status: 400 });
 

@@ -9,6 +9,7 @@ import {
   type Github,
   type Outcome,
   type PinkyEvent,
+  type WebhookEvent,
   type Project,
   type PromiseRecord,
 } from "./handle-event.js";
@@ -21,7 +22,8 @@ const BOT = "pinky-bot[bot]";
 
 function fakes(
   projects: Project[] = [{ repoId: REPO.id }],
-  promises: Record<number, PromiseRecord> = {}
+  promises: Record<number, PromiseRecord> = {},
+  closedIssues: number[] = []
 ) {
   const labels: { repo: string; number: number; label: string }[] = [];
   const removed: { repo: string; number: number; label: string }[] = [];
@@ -39,6 +41,9 @@ function fakes(
     },
     async hasWriteAccess(_repo, login) {
       return login === MAINTAINER;
+    },
+    async isOpen(_repo, number) {
+      return !closedIssues.includes(number);
     },
   };
   const chain: Chain = {
@@ -92,7 +97,7 @@ function opened(
   kind: "issues" | "pull_request",
   authorAssociation: string,
   number = 7
-): PinkyEvent {
+): WebhookEvent {
   const item = { number, author_association: authorAssociation };
   return {
     name: kind,
@@ -101,7 +106,7 @@ function opened(
       repository: REPO,
       ...(kind === "issues" ? { issue: item } : { pull_request: item }),
     },
-  } as unknown as PinkyEvent;
+  } as unknown as WebhookEvent;
 }
 
 describe("handleEvent", () => {
@@ -311,5 +316,92 @@ describe("verdicts", () => {
 
     expect(settlements).toEqual([]);
     expect(comments).toEqual([]);
+  });
+});
+
+function ping(number = 7, repo = REPO): PinkyEvent {
+  return { name: "check_promise", repo: { id: repo.id, full_name: repo.full_name }, number };
+}
+
+describe("the pay page's check-promise ping", () => {
+  it("swaps awaiting-promise for promised once the chain has the promise", async () => {
+    const { github, chain, labels, removed, comments, settlements } = fakes(undefined, {
+      7: { state: "open" },
+    });
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect(labels).toEqual([{ repo: REPO.full_name, number: 7, label: PROMISED_LABEL }]);
+    expect(removed).toEqual([{ repo: REPO.full_name, number: 7, label: AWAITING_PROMISE_LABEL }]);
+    expect(comments).toEqual([]);
+    expect(settlements).toEqual([]);
+  });
+
+  it("changes nothing when the chain has no promise, however confident the ping is", async () => {
+    const { github, chain, labels, removed, comments, settlements } = fakes();
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect({ labels, removed, comments, settlements }).toEqual({
+      labels: [],
+      removed: [],
+      comments: [],
+      settlements: [],
+    });
+  });
+
+  it("keeps the promise right away when the issue was already closed", async () => {
+    const { github, chain, labels, removed, comments, settlements } = fakes(
+      undefined,
+      { 7: { state: "open" } },
+      [7]
+    );
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect(settlements).toEqual([{ repoId: REPO.id, issueNumber: 7, outcome: "kept" }]);
+    expect(comments).toHaveLength(1);
+    expect(comments[0]!.body).toContain(explorer("keptSig7"));
+    expect(labels).toEqual([{ repo: REPO.full_name, number: 7, label: KEPT_LABEL }]);
+    expect(removed.map((r) => r.label).sort()).toEqual([AWAITING_PROMISE_LABEL, PROMISED_LABEL]);
+  });
+
+  for (const state of ["kept", "broken"] as const) {
+    it(`leaves a ${state} promise alone, closed issue or not`, async () => {
+      for (const closedIssues of [[], [7]]) {
+        const { github, chain, labels, removed, comments, settlements } = fakes(
+          undefined,
+          { 7: { state, settlementTx: "firstSig" } },
+          closedIssues
+        );
+
+        await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+        expect({ labels, removed, comments, settlements }).toEqual({
+          labels: [],
+          removed: [],
+          comments: [],
+          settlements: [],
+        });
+      }
+    });
+  }
+
+  it("ignores a ping for a repo that isn't a project", async () => {
+    const { github, chain, labels, comments, settlements } = fakes([], { 7: { state: "open" } }, [7]);
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect({ labels, comments, settlements }).toEqual({ labels: [], comments: [], settlements: [] });
+  });
+
+  it("is harmless when the same ping arrives twice", async () => {
+    const { github, chain, comments, settlements } = fakes(undefined, { 7: { state: "open" } });
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect(comments).toEqual([]);
+    expect(settlements).toEqual([]);
   });
 });
