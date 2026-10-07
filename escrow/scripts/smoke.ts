@@ -1,13 +1,7 @@
 // Runs one promise through keep and one through break on devnet.
 // Usage: npm run smoke
-import { BN } from "@anchor-lang/core";
+import { getAccount } from "@solana/spl-token";
 import {
-  createAccount,
-  getAccount,
-  mintTo,
-} from "@solana/spl-token";
-import {
-  Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
@@ -20,14 +14,13 @@ import {
   explorerTx,
   loadConfig,
   loadOrCreateKey,
-  promiseAddress,
+  makePromise,
 } from "./lib";
 
 async function main() {
   const config = loadConfig();
   const { connection, operator, program } = connect();
   const arbiter = loadOrCreateKey("arbiter");
-  const mint = new PublicKey(config.mint);
   const project = new PublicKey(config.project);
   const maintainerWallet = new PublicKey(config.maintainerWallet);
 
@@ -53,31 +46,7 @@ async function main() {
     );
   }
 
-  async function makePromise(issue: number) {
-    const promiser = Keypair.generate();
-    await sendAndConfirmTransaction(
-      connection,
-      new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: operator.publicKey,
-          toPubkey: promiser.publicKey,
-          lamports: 0.01 * LAMPORTS_PER_SOL,
-        })
-      ),
-      [operator]
-    );
-    const promiserToken = await createAccount(connection, operator, mint, promiser.publicKey);
-    await mintTo(connection, operator, mint, promiserToken, operator, AMOUNT);
-    const depositSig = await program.methods
-      .deposit(new BN(issue))
-      .accountsPartial({ promiser: promiser.publicKey, project, promiserToken })
-      .signers([promiser])
-      .rpc();
-    const promise = promiseAddress(program.programId, project, new BN(issue));
-    return { promiserToken, promise, depositSig };
-  }
-
-  const kept = await makePromise(base);
+  const kept = await makePromise(connection, operator, program, config, base);
   const keptSig = await program.methods
     .refund()
     .accountsPartial({
@@ -91,7 +60,7 @@ async function main() {
   console.log(`Kept   (promiser balance ${await balance(kept.promiserToken)} USDC): ${explorerTx(keptSig)}`);
 
   const maintainerBefore = await balance(maintainerWallet);
-  const broken = await makePromise(base + 1);
+  const broken = await makePromise(connection, operator, program, config, base + 1);
   const brokenSig = await program.methods
     .forfeit()
     .accountsPartial({

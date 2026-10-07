@@ -34,7 +34,7 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | Escrow program on devnet (`escrow/`) | Done ([#2](https://github.com/sivaratrisrinivas/pinky/issues/2)) |
 | Demo repo, GitHub App, keys, deploy secrets (`scripts/setup-github-app.sh`) | Done ([#3](https://github.com/sivaratrisrinivas/pinky/issues/3)) |
 | Ask first-timers for a promise (`handleEvent`, webhook) | Done, live at https://pinky-bot.vercel.app ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4)) |
-| Verdicts from maintainer commands | Not started ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
+| Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Code and tests done, not yet deployed or run on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
 | Pay page with email sign-in and faucet | Not started ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6), [#7](https://github.com/sivaratrisrinivas/pinky/issues/7)) |
 | README badge, seed data, full-journey runs | Not started ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8), [#9](https://github.com/sivaratrisrinivas/pinky/issues/9), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 
@@ -46,7 +46,7 @@ The spec is [#1](https://github.com/sivaratrisrinivas/pinky/issues/1) and the da
 escrow/                  Anchor program, tests and operator scripts
   programs/escrow/       init_project, deposit, refund, forfeit
   tests/                 behaviour tests on a local validator
-  scripts/               setup-project and smoke, run against devnet
+  scripts/               setup-project, smoke and promise, run against devnet
 api/webhook.ts           Vercel function: verifies the GitHub webhook and calls handleEvent
 .vercelignore            keeps escrow/, scripts/ and docs/ out of deploys
 src/                     handleEvent and its GitHub and chain ports, plus the real adapters
@@ -95,6 +95,7 @@ cd escrow
 anchor deploy --provider.cluster devnet     # needs about 3 devnet SOL
 npm run setup-project -- <owner>/<repo>     # test USDC mint, arbiter key and project; safe to re-run
 npm run smoke                               # keep and break on devnet, prints two explorer links
+npm run promise -- <issue-number>           # a 5 test USDC promise for a real demo issue, to settle from GitHub
 ```
 
 Keys and the generated `devnet.json` live in `escrow/.keys/` and are gitignored. The wizard `scripts/setup-github-app.sh` creates the demo repo, GitHub App, arbiter and faucet keypairs and `.env` first; `setup-project` reuses its arbiter.
@@ -103,27 +104,41 @@ The demo project is `sivaratrisrinivas/pinky-demo` (repo ID 1407786691) with the
 
 ## GitHub App
 
-The bot runs as one Vercel function at `https://pinky-bot.vercel.app/api/webhook`. GitHub sends it `issues` and `pull_request` events.
+The bot runs as one Vercel function at `https://pinky-bot.vercel.app/api/webhook`. GitHub sends it `issues`, `pull_request` and `issue_comment` events.
 
 For each request the function:
 
 1. Checks the `X-Hub-Signature-256` header against `GITHUB_WEBHOOK_SECRET`. A bad or missing signature gets a 401.
-2. Ignores every event except `issues.opened` and `pull_request.opened`.
-3. Calls `handleEvent`, which does nothing unless the author is a first-timer (`NONE`, `FIRST_TIMER` or `FIRST_TIME_CONTRIBUTOR`) and the repo is a project on-chain.
-4. Adds the `awaiting-promise` label and posts the comment, with a pay link of the form `https://pinky-bot.vercel.app/pay?repo=<owner>%2F<name>&n=<number>`.
+2. Ignores every event except `issues`, `pull_request` and `issue_comment`.
+3. Calls `handleEvent`.
+
+`handleEvent` does one of two things, and only for repos that are projects on-chain:
+
+**Ask.** On `issues.opened` or `pull_request.opened` by a first-timer (`NONE`, `FIRST_TIMER` or `FIRST_TIME_CONTRIBUTOR`) it adds the `awaiting-promise` label and posts the comment, with a pay link of the form `https://pinky-bot.vercel.app/pay?repo=<owner>%2F<name>&n=<number>`.
+
+**Settle.** A verdict is `/accept` or `/spam` on a line of its own in a new comment, or closing an issue or closing or merging a PR. Comments from bots are ignored, which covers the App's own. Then:
+
+| Situation | Result |
+| --- | --- |
+| Sender has no write access, by command | A short reply, no chain call. |
+| Sender has no write access, by close | Nothing. The author closing their own issue is not a verdict. |
+| Open promise | `/accept` or a close keeps it, `/spam` breaks it. The bot comments the explorer link, removes `awaiting-promise` and `promised`, and adds `promise-kept` or `promise-broken`. |
+| Settled promise, by command | "This promise was already kept/broken" with the original transaction link. No chain call. The first verdict is final. |
+| Settled promise, by close | Nothing. Closing after `/spam` is normal. |
+| No promise | Only `awaiting-promise` is removed. |
 
 `handleEvent` in `src/handle-event.ts` is the only entry point. It reaches the outside world through two ports, and the tests use in-memory fakes of both.
 
 | Port | Methods today | Real adapter |
 | --- | --- | --- |
-| `Github` | `addLabel`, `comment` | `src/github.ts`, Octokit with an installation token |
-| `Chain` | `readProject` | `src/chain.ts`, decodes the project account over RPC |
+| `Github` | `addLabel`, `removeLabel`, `comment`, `hasWriteAccess` | `src/github.ts`, Octokit with an installation token. `hasWriteAccess` is the collaborator permission being `write` or `admin`. |
+| `Chain` | `readProject`, `readPromise`, `settle` | `src/chain.ts`, decodes accounts over RPC and signs `refund` or `forfeit` with the arbiter key |
 
-`readProject` returns null when the project account doesn't exist, isn't a `Project` account, or names a different arbiter than ours. The last check matters because `init_project` is permissionless. Author association comes from the webhook payload, not from an extra API call. Reading a promise, keeping, breaking and counting promises join the `Chain` port in [#5](https://github.com/sivaratrisrinivas/pinky/issues/5) and [#8](https://github.com/sivaratrisrinivas/pinky/issues/8).
+`readProject` returns null when the project account doesn't exist, isn't a `Project` account, or names a different arbiter than ours. The last check matters because `init_project` is permissionless. Author association comes from the webhook payload, not from an extra API call. `readPromise` returns null, `open`, or `kept`/`broken` with the latest successful transaction on the promise account, which is the settlement. `settle` rebuilds the instruction from the stored accounts, so the destination is always the promiser's token account for kept and the maintainer wallet for broken. Counting promises joins the `Chain` port in [#8](https://github.com/sivaratrisrinivas/pinky/issues/8).
 
 ```bash
 npm install
-npm test          # 26 tests: handleEvent, the chain decoder, signature check
+npm test          # 51 tests: handleEvent, the chain adapter, signature check
 npm run typecheck
 ```
 
@@ -153,6 +168,8 @@ On 2026-10-08, with the App installed on `sivaratrisrinivas/pinky-demo`:
 
 - A webhook retry after a failed comment can post the comment twice. Nothing checks for an existing label first.
 - The pay link points at `/pay`, which doesn't exist until [#6](https://github.com/sivaratrisrinivas/pinky/issues/6).
+- Two verdicts racing, such as `/accept` and a close seconds apart, can both read the promise as open. The second chain call fails with `PromiseSettled`, the webhook returns an error, and GitHub shows a failed delivery. The money is safe.
+- The settlement link comes from `getSignaturesForAddress` on the public RPC, which only looks back 10 transactions on the promise account. A settled promise whose history the RPC can't serve gets the "already kept" reply without a link.
 - The comment says "5 USDC" as fixed text. The amount is on the project account, and the `Project` type doesn't carry it yet.
 
 ## Not in v1

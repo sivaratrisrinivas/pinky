@@ -1,6 +1,15 @@
 import * as anchor from "@anchor-lang/core";
 import { BN, Program } from "@anchor-lang/core";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { createAccount, mintTo } from "@solana/spl-token";
+import {
+  Connection,
+  Keypair,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  sendAndConfirmTransaction,
+} from "@solana/web3.js";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -87,4 +96,41 @@ export function loadConfig(): DevnetConfig {
     throw new Error("No .keys/devnet.json. Run `npm run setup-project` first.");
   }
   return JSON.parse(fs.readFileSync(configFile, "utf8"));
+}
+
+/** Pays for a promise on `issue` from a fresh promiser funded by the operator. */
+export async function makePromise(
+  connection: Connection,
+  operator: Keypair,
+  program: Program<Escrow>,
+  config: DevnetConfig,
+  issue: number
+) {
+  const promiser = Keypair.generate();
+  await sendAndConfirmTransaction(
+    connection,
+    new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: operator.publicKey,
+        toPubkey: promiser.publicKey,
+        lamports: 0.01 * LAMPORTS_PER_SOL,
+      })
+    ),
+    [operator]
+  );
+  const promiserToken = await createAccount(
+    connection,
+    operator,
+    new PublicKey(config.mint),
+    promiser.publicKey
+  );
+  await mintTo(connection, operator, new PublicKey(config.mint), promiserToken, operator, AMOUNT);
+  const project = new PublicKey(config.project);
+  const depositSig = await program.methods
+    .deposit(new BN(issue))
+    .accountsPartial({ promiser: promiser.publicKey, project, promiserToken })
+    .signers([promiser])
+    .rpc();
+  const promise = promiseAddress(program.programId, project, new BN(issue));
+  return { promiserToken, promise, depositSig };
 }

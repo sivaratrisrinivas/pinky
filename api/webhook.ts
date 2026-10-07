@@ -1,6 +1,6 @@
 import { Keypair, Connection } from "@solana/web3.js";
 import { App } from "octokit";
-import { createChain } from "../src/chain.js";
+import { createChain, sendWith } from "../src/chain.js";
 import { githubFor } from "../src/github.js";
 import { handleEvent, type PinkyEvent } from "../src/handle-event.js";
 import { verifySignature } from "../src/signature.js";
@@ -18,7 +18,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const name = request.headers.get("x-github-event");
-  if (name !== "issues" && name !== "pull_request") {
+  if (name !== "issues" && name !== "pull_request" && name !== "issue_comment") {
     return new Response("Ignored", { status: 202 });
   }
   const event = { name, payload: JSON.parse(body) } as PinkyEvent;
@@ -31,12 +31,10 @@ export async function POST(request: Request): Promise<Response> {
   });
   const arbiter = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(env("ARBITER_SECRET_KEY"))));
 
+  const connection = new Connection(process.env.RPC_URL ?? "https://api.devnet.solana.com", "confirmed");
   await handleEvent(event, {
     github: githubFor(app, installationId),
-    chain: createChain({
-      arbiter: arbiter.publicKey,
-      connection: new Connection(process.env.RPC_URL ?? "https://api.devnet.solana.com", "confirmed"),
-    }),
+    chain: createChain({ arbiter, connection, send: sendWith(connection) }),
     appUrl: `https://${env("VERCEL_PROJECT_PRODUCTION_URL")}`,
   });
   return new Response("OK");

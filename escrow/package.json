@@ -6,7 +6,8 @@
     "test": "ANCHOR_TEST_VALIDATOR=legacy anchor test",
     "typecheck": "tsc --noEmit -p .",
     "setup-project": "ts-node scripts/setup-project.ts",
-    "smoke": "ts-node scripts/smoke.ts"
+    "smoke": "ts-node scripts/smoke.ts",
+    "promise": "ts-node scripts/promise.ts"
   },
   "dependencies": {
     "@anchor-lang/core": "^1.2.0",
