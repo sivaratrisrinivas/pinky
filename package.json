@@ -6,6 +6,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p .",
     "pay-e2e": "esbuild scripts/pay-e2e.ts --bundle --platform=node --format=esm --packages=external --outfile=.pay-e2e.mjs --log-level=warning && node --env-file=.env .pay-e2e.mjs",
+    "seed-issues": "esbuild scripts/seed-issues.ts --bundle --platform=node --format=esm --packages=external --outfile=.seed-issues.mjs --log-level=warning && node --env-file=.env .seed-issues.mjs",
     "build": "esbuild web/pay.ts --bundle --minify --format=iife --platform=browser --target=es2022 --inject:web/buffer-shim.js --define:global=globalThis --outfile=public/pay.js"
   },
   "dependencies": {

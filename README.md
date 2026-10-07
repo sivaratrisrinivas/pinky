@@ -36,9 +36,10 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | Ask first-timers for a promise (`handleEvent`, webhook) | Done, live at https://pinky-bot.vercel.app ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4)) |
 | Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Done. `/spam`, `/accept`, an issue close and the already-settled reply ran live on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
 | Pay page with Google sign-in and faucet | Live at `/pay` with the Phantom extension and verified on devnet. Email sign-in is the one open gap: Google sign-in is built but needs `PHANTOM_APP_ID` ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6)) |
-| Pay page pings the app so the label flips | Not started ([#7](https://github.com/sivaratrisrinivas/pinky/issues/7)) |
+| Pay page pings the app so the label flips | Built and tested with fakes; `/api/check-promise` not deployed or run live yet, so the demo-repo criterion of [#7](https://github.com/sivaratrisrinivas/pinky/issues/7) is still open |
+| Seed script for ~10 demo issues (`npm run seed-issues`) | Built and tested, **not run yet**: the live criteria of [#9](https://github.com/sivaratrisrinivas/pinky/issues/9) are open (see Seeded demo issues) |
 | README badge (`/badge.svg`) | Built and tested, not deployed or run live yet: the demo README doesn't show it and no counts have been seen moving on devnet ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8)) |
-| Seed data, full-journey runs | Not started ([#9](https://github.com/sivaratrisrinivas/pinky/issues/9), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
+| Full-journey runs | Not started ([#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 
 The spec is [#1](https://github.com/sivaratrisrinivas/pinky/issues/1) and the day-by-day plan is in [PLAN.md](PLAN.md).
 
@@ -50,13 +51,13 @@ escrow/                  Anchor program, tests and operator scripts
   tests/                 behaviour tests on a local validator
   scripts/               setup-project, smoke and promise, run against devnet
 api/webhook.ts           Vercel function: verifies the GitHub webhook and calls handleEvent
-api/pay.ts, faucet.ts, deposit-tx.ts   Vercel functions behind the pay page
+api/pay.ts, faucet.ts, deposit-tx.ts, check-promise.ts   Vercel functions behind the pay page
 api/badge.ts             Vercel function: the README badge, served at /badge.svg (see vercel.json)
 web/pay.ts               pay page client, bundled by `npm run build` into public/pay.js
 public/pay.html          the pay page, served at /pay (see vercel.json)
 .vercelignore            keeps escrow/, scripts/ and docs/ out of deploys
 src/                     handleEvent and its GitHub and chain ports, plus the real adapters
-scripts/                 setup-github-app.sh, the human-only setup wizard
+scripts/                 setup-github-app.sh (human-only setup wizard), pay-e2e.ts, seed-issues.ts
 docs/adr/                architecture decisions
 docs/agents/             issue tracker, triage labels and domain doc conventions
 GLOSSARY.md              the project's vocabulary
@@ -144,7 +145,7 @@ For each request the function:
 
 ```bash
 npm install
-npm test          # 79 tests: handleEvent, the chain adapter, signature check, the pay page core, the badge
+npm test          # 106 tests: handleEvent, the chain adapter, signature check, the pay page core, the seed script core, the badge
 npm run typecheck
 ```
 
@@ -215,7 +216,21 @@ Not done yet, so the acceptance criteria of #8 that need a live run stay open: d
 | --- | --- |
 | `GET /api/pay` | Status of the link: `ready`, `closed`, `promised`, `unknown-issue` or `not-a-project`. The page shows no pay button unless it is `ready`. |
 | `POST /api/faucet` | Tops a wallet up to 5 test USDC and 0.01 devnet SOL from the faucet wallet, creating its token account. Asking again sends nothing. |
+| `POST /api/check-promise` | The ping after a deposit, with `{ repo, n }`. It carries no proof and the app never trusts it (see below). |
 | `POST /api/deposit-tx` | Re-checks the status and returns an unsigned `deposit` transaction paid by the wallet. The browser signs it with the embedded wallet and sends it to devnet. |
+
+### The ping
+
+After the deposit confirms, the page posts `{ repo, n }` to `/api/check-promise`, and does the same when it opens on an issue that already has a promise, in case the first ping was lost. The function looks up the repo ID and installation through GitHub and calls `handleEvent` with a `check_promise` event. `handleEvent` reads the project and the promise from the chain and acts only on what it finds:
+
+| Chain says | Result |
+| --- | --- |
+| No promise | Nothing changes. |
+| Open promise, issue open | `awaiting-promise` is swapped for `promised`. |
+| Open promise, issue closed | The late deposit is kept right away: the bot comments the refund link and sets `promise-kept`. |
+| Settled promise | Nothing changes, so a repeated or forged ping can't undo a verdict. |
+
+Pinging twice is harmless. The `Github` port gained `isOpen` for this.
 
 The logic is in `src/pay.ts` behind three ports (GitHub, chain, faucet) with fakes in `src/pay.test.ts`. Adapters are in `src/pay-adapters.ts`.
 
@@ -243,6 +258,23 @@ Everything in the issue's acceptance list is checked live except signing in with
 - Two simultaneous faucet calls for one wallet can both send.
 - The page sends the signed transaction to the public devnet RPC, while the functions use `RPC_URL`.
 - Each status check makes three GitHub calls to find the repo ID and issue state.
+
+## Seeded demo issues
+
+The demo repo's first issues are seeded: `npm run seed-issues` opens about 10 realistic issues (typos, a dark-mode bug, docs questions, feature ideas) from test GitHub accounts so the repo looks used. They are not reports from real users, and the demo repo's README says so.
+
+```bash
+# .env: DEMO_REPO and APP_URL come from the setup wizard
+SEED_GITHUB_TOKENS=ghp_aaa,ghp_bbb   # test accounts, public_repo scope; not the owner, not collaborators
+SEED_OWNER_TOKEN=$(gh auth token)    # optional: lets the script add the "seeded" note to the demo README
+
+npm run seed-issues -- --dry-run     # lists what it would open
+npm run seed-issues                  # opens them, then waits for the bot's label and comment on each
+```
+
+Issues are shared out over the test accounts in turn, and a title that already exists in the repo is skipped, so a re-run opens only what is missing. Each new issue is checked for the `awaiting-promise` label and the bot comment with its pay link, and the script exits non-zero if one doesn't get both within a minute. A test account that GitHub marks as a collaborator or contributor is reported, since the App ignores those. The issue content, token parsing, the "was it asked" check and the README note are tested in `src/seed.test.ts`; the GitHub calls are not automated.
+
+**Status:** the script has not been run. Nothing has been opened on the demo repo, and the demo repo's README does not have the note yet. The two acceptance criteria of [#9](https://github.com/sivaratrisrinivas/pinky/issues/9) stay unchecked until a run with real test-account tokens.
 
 ## Not in v1
 

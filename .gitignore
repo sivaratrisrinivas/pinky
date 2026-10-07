@@ -5,3 +5,4 @@ node_modules
 
 public/pay.js
 .pay-e2e.mjs
+.seed-issues.mjs
