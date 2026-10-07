@@ -48,6 +48,7 @@ escrow/                  Anchor program, tests and operator scripts
   tests/                 behaviour tests on a local validator
   scripts/               setup-project and smoke, run against devnet
 api/webhook.ts           Vercel function: verifies the GitHub webhook and calls handleEvent
+.vercelignore            keeps escrow/, scripts/ and docs/ out of deploys
 src/                     handleEvent and its GitHub and chain ports, plus the real adapters
 scripts/                 setup-github-app.sh, the human-only setup wizard
 docs/adr/                architecture decisions
@@ -102,15 +103,57 @@ The demo project is `sivaratrisrinivas/pinky-demo` (repo ID 1407786691) with the
 
 ## GitHub App
 
-`handleEvent` in `src/handle-event.ts` is the app's one entry point. It talks to the outside world only through two ports: `Github` (label, comment) and `Chain` (read the project). Tests use in-memory fakes of both. The real adapters are `src/github.ts` (Octokit) and `src/chain.ts` (reads the project account, and ignores projects that name a different arbiter).
+The bot runs as one Vercel function at `https://pinky-bot.vercel.app/api/webhook`. GitHub sends it `issues` and `pull_request` events.
+
+For each request the function:
+
+1. Checks the `X-Hub-Signature-256` header against `GITHUB_WEBHOOK_SECRET`. A bad or missing signature gets a 401.
+2. Ignores every event except `issues.opened` and `pull_request.opened`.
+3. Calls `handleEvent`, which does nothing unless the author is a first-timer (`NONE`, `FIRST_TIMER` or `FIRST_TIME_CONTRIBUTOR`) and the repo is a project on-chain.
+4. Adds the `awaiting-promise` label and posts the comment, with a pay link of the form `https://pinky-bot.vercel.app/pay?repo=<owner>%2F<name>&n=<number>`.
+
+`handleEvent` in `src/handle-event.ts` is the only entry point. It reaches the outside world through two ports, and the tests use in-memory fakes of both.
+
+| Port | Methods today | Real adapter |
+| --- | --- | --- |
+| `Github` | `addLabel`, `comment` | `src/github.ts`, Octokit with an installation token |
+| `Chain` | `readProject` | `src/chain.ts`, decodes the project account over RPC |
+
+`readProject` returns null when the project account doesn't exist, isn't a `Project` account, or names a different arbiter than ours. The last check matters because `init_project` is permissionless. Author association comes from the webhook payload, not from an extra API call. Reading a promise, keeping, breaking and counting promises join the `Chain` port in [#5](https://github.com/sivaratrisrinivas/pinky/issues/5) and [#8](https://github.com/sivaratrisrinivas/pinky/issues/8).
 
 ```bash
 npm install
-npm test
+npm test          # 26 tests: handleEvent, the chain decoder, signature check
 npm run typecheck
 ```
 
-`issues.opened` and `pull_request.opened` from a first-timer on a project get the `awaiting-promise` label and a comment with a pay link, `/pay?repo=<owner>/<name>&n=<number>`. Deploy with `vercel deploy --prod`; the webhook URL is `<app url>/api/webhook`.
+### Deploy
+
+```bash
+vercel deploy --prod --yes     # from the repo root
+```
+
+Things that broke the first deploy:
+
+- Deployment Protection (Vercel Authentication) must be off, or GitHub gets a login page instead of the function.
+- `.vercelignore` excludes `escrow/`, `scripts/` and `docs/`. A local test validator leaves a socket file in `escrow/.anchor/` that the Vercel CLI can't upload.
+- `package.json` pins `uuid` to 9.x through `overrides`. `@solana/web3.js` 1.x pulls an ESM-only `uuid` that crashes `require()` on cold start.
+
+Environment variables on the Vercel project: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_BASE64`, `GITHUB_WEBHOOK_SECRET` and `ARBITER_SECRET_KEY`. The pay link host comes from Vercel's `VERCEL_PROJECT_PRODUCTION_URL`. `RPC_URL` is optional and defaults to the public devnet endpoint.
+
+### Verified live
+
+On 2026-10-08, with the App installed on `sivaratrisrinivas/pinky-demo`:
+
+- [Issue 1](https://github.com/sivaratrisrinivas/pinky-demo/issues/1), opened by the owner account, got no label and no comment.
+- [Issue 2](https://github.com/sivaratrisrinivas/pinky-demo/issues/2), opened by a second account with association `NONE`, got `awaiting-promise` and the comment within seconds.
+- `readProject` against the real devnet project for repo ID 1407786691 returns the project for the matching arbiter and null for any other.
+
+### Known limits
+
+- A webhook retry after a failed comment can post the comment twice. Nothing checks for an existing label first.
+- The pay link points at `/pay`, which doesn't exist until [#6](https://github.com/sivaratrisrinivas/pinky/issues/6).
+- The comment says "5 USDC" as fixed text. The amount is on the project account, and the `Project` type doesn't carry it yet.
 
 ## Not in v1
 
