@@ -175,7 +175,9 @@ Later the same day:
 - [Issue 6](https://github.com/sivaratrisrinivas/pinky-demo/issues/6): a promise, then the owner closed the issue. Same "Promise kept" reply and label.
 - Both promisers' token accounts read 5 test USDC after the refund.
 - [Issue 7](https://github.com/sivaratrisrinivas/pinky-demo/issues/7): a promise, then `/accept` from a second account without write access. The bot replied that only people with write access can settle a promise. No label was added, the issue stayed open, the promise state stayed open and the promiser's token account stayed at 0.
-- Not run live: closing or merging a PR.
+- [PR 8](https://github.com/sivaratrisrinivas/pinky-demo/pull/8): a promise, then the owner merged the PR. The bot replied "Promise kept" with [the `refund` transaction](https://explorer.solana.com/tx/5sKj7KHbdnWrjt7dy22gAqTQti86jepGcDCkwvd9qPdC82JZ1yyytTTA2ytoWTNxv5jMVip6boitKpCnELfFaR3o?cluster=devnet), added `promise-kept`, and the promiser's token account read 5 test USDC.
+
+Every acceptance criterion of #5 has now run live. Closing a PR without merging was not run separately, but it takes the same path as a merge.
 
 ### Known limits
 
