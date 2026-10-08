@@ -2,6 +2,8 @@
 
 Pinky promise this isn't spam.
 
+![Pinky-protected](https://pinky-bot.vercel.app/badge.svg?repo=sivaratrisrinivas/pinky-demo)
+
 ## What
 
 Pinky is a GitHub App and a small Solana escrow program. When a first-time contributor opens an issue or PR, Pinky asks for a refundable promise of 5 USDC. A maintainer closes the issue or comments `/accept`, and the money goes back. A maintainer comments `/spam`, and the money goes to the project's maintainer wallet.
