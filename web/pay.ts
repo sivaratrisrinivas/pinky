@@ -1,5 +1,6 @@
 import { AddressType, BrowserSDK } from "@phantom/browser-sdk";
 import { Connection, Transaction } from "@solana/web3.js";
+import { pingUntilFound } from "../src/ping.js";
 
 const DEVNET_RPC = "https://api.devnet.solana.com";
 const explorerTx = (signature: string) => `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
@@ -55,6 +56,11 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return result;
 }
 
+/** Asks the app to look at the chain and update the label, retrying while it can't see the promise yet. */
+function pingApp(): Promise<void> {
+  return pingUntilFound(() => post("/api/check-promise", { repo, n: Number(number) }));
+}
+
 function bytesFromBase64(value: string): Uint8Array {
   return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
 }
@@ -64,6 +70,7 @@ async function main() {
   const response = await fetch(`/api/pay?${new URLSearchParams({ repo, n: number })}`);
   const status = (await response.json()) as Status;
   if (!response.ok) return say("This link is missing its issue. Use the one in the bot's comment.", "error");
+  if (status.state === "promised") void pingApp();
   if (status.state !== "ready") return say(MESSAGES[status.state], status.state === "promised" ? "done" : "info");
 
   const dollars = Number(status.amount) / 1_000_000;
@@ -128,6 +135,7 @@ async function makePromise(sdk: BrowserSDK, wallet: string) {
   if (value.err) throw new Error("The promise didn't go through. Nothing was taken from you; try again.");
 
   say("Promise made. Thank you!", "done");
+  void pingApp();
   const link = document.createElement("a");
   link.href = explorerTx(signature);
   link.textContent = "View it on Solana Explorer";

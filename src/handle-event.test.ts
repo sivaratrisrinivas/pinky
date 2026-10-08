@@ -4,11 +4,13 @@ import {
   BROKEN_LABEL,
   KEPT_LABEL,
   PROMISED_LABEL,
+  checkPromise,
   handleEvent,
   type Chain,
   type Github,
   type Outcome,
   type PinkyEvent,
+  type WebhookEvent,
   type Project,
   type PromiseRecord,
 } from "./handle-event.js";
@@ -21,7 +23,8 @@ const BOT = "pinky-bot[bot]";
 
 function fakes(
   projects: Project[] = [{ repoId: REPO.id }],
-  promises: Record<number, PromiseRecord> = {}
+  promises: Record<number, PromiseRecord> = {},
+  closedIssues: number[] = []
 ) {
   const labels: { repo: string; number: number; label: string }[] = [];
   const removed: { repo: string; number: number; label: string }[] = [];
@@ -40,6 +43,9 @@ function fakes(
     async hasWriteAccess(_repo, login) {
       return login === MAINTAINER;
     },
+    async isOpen(_repo, number) {
+      return !closedIssues.includes(number);
+    },
   };
   const chain: Chain = {
     async readProject(repoId) {
@@ -47,6 +53,9 @@ function fakes(
     },
     async readPromise(_repoId, issueNumber) {
       return promises[issueNumber] ?? null;
+    },
+    async countPromises() {
+      return null;
     },
     async settle(repoId, issueNumber, outcome) {
       settlements.push({ repoId, issueNumber, outcome });
@@ -92,7 +101,7 @@ function opened(
   kind: "issues" | "pull_request",
   authorAssociation: string,
   number = 7
-): PinkyEvent {
+): WebhookEvent {
   const item = { number, author_association: authorAssociation };
   return {
     name: kind,
@@ -101,7 +110,7 @@ function opened(
       repository: REPO,
       ...(kind === "issues" ? { issue: item } : { pull_request: item }),
     },
-  } as unknown as PinkyEvent;
+  } as unknown as WebhookEvent;
 }
 
 describe("handleEvent", () => {
@@ -170,7 +179,7 @@ describe("handleEvent", () => {
     await handleEvent(opened("issues", "NONE"), { github, chain, appUrl: APP_URL });
 
     expect(comments[0]!.body).toMatch(
-      /^Thanks for opening this! Pinky promise it isn't spam\? This project asks first-time contributors for a small refundable deposit of 5 USDC\. You get it back when this is closed, unless a maintainer marks it as spam\. \[Make the promise: 30 seconds, sign in with Google\]\(.+\) · Can't pay\? Anyone, like a contributor who knows you, can make the promise for you with the same link\.$/
+      /^Thanks for opening this! Pinky promise it isn't spam\? This project asks first-time contributors for a small promise of 5 USDC\. It's kept, and the money goes back to whoever made it, when this is closed, unless a maintainer marks it as spam\. \[Make the promise: 30 seconds, sign in with Google\]\(.+\) · Can't pay\? Anyone, like a contributor who knows you, can make the promise for you with the same link\.$/
     );
   });
 });
@@ -220,7 +229,7 @@ describe("verdicts", () => {
     });
   }
 
-  it("does not let the author close their way to a refund", async () => {
+  it("does not let the author close their way to a kept promise", async () => {
     const { github, chain, comments, settlements } = fakes(undefined, { 7: { state: "open" } });
 
     await handleEvent(closed("issues", "first-timer"), { github, chain, appUrl: APP_URL });
@@ -311,5 +320,158 @@ describe("verdicts", () => {
 
     expect(settlements).toEqual([]);
     expect(comments).toEqual([]);
+  });
+});
+
+function ping(number = 7, repo = REPO): PinkyEvent {
+  return { name: "check_promise", repo: { id: repo.id, full_name: repo.full_name }, number };
+}
+
+describe("the pay page's check-promise ping", () => {
+  it("swaps awaiting-promise for promised once the chain has the promise", async () => {
+    const { github, chain, labels, removed, comments, settlements } = fakes(undefined, {
+      7: { state: "open" },
+    });
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect(labels).toEqual([{ repo: REPO.full_name, number: 7, label: PROMISED_LABEL }]);
+    expect(removed).toEqual([{ repo: REPO.full_name, number: 7, label: AWAITING_PROMISE_LABEL }]);
+    expect(comments).toEqual([]);
+    expect(settlements).toEqual([]);
+  });
+
+  it("changes nothing when the chain has no promise, however confident the ping is", async () => {
+    const { github, chain, labels, removed, comments, settlements } = fakes();
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect({ labels, removed, comments, settlements }).toEqual({
+      labels: [],
+      removed: [],
+      comments: [],
+      settlements: [],
+    });
+  });
+
+  it("keeps the promise right away when the issue was already closed", async () => {
+    const { github, chain, labels, removed, comments, settlements } = fakes(
+      undefined,
+      { 7: { state: "open" } },
+      [7]
+    );
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect(settlements).toEqual([{ repoId: REPO.id, issueNumber: 7, outcome: "kept" }]);
+    expect(comments).toHaveLength(1);
+    expect(comments[0]!.body).toContain(explorer("keptSig7"));
+    expect(labels).toEqual([{ repo: REPO.full_name, number: 7, label: KEPT_LABEL }]);
+    expect(removed.map((r) => r.label).sort()).toEqual([AWAITING_PROMISE_LABEL, PROMISED_LABEL]);
+  });
+
+  for (const state of ["kept", "broken"] as const) {
+    it(`leaves a ${state} promise alone, closed issue or not`, async () => {
+      for (const closedIssues of [[], [7]]) {
+        const { github, chain, labels, removed, comments, settlements } = fakes(
+          undefined,
+          { 7: { state, settlementTx: "firstSig" } },
+          closedIssues
+        );
+
+        await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+        expect({ labels, removed, comments, settlements }).toEqual({
+          labels: [],
+          removed: [],
+          comments: [],
+          settlements: [],
+        });
+      }
+    });
+  }
+
+  it("ignores a ping for a repo that isn't a project", async () => {
+    const { github, chain, labels, comments, settlements } = fakes([], { 7: { state: "open" } }, [7]);
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect({ labels, comments, settlements }).toEqual({ labels: [], comments: [], settlements: [] });
+  });
+
+  it("is harmless when the same ping arrives twice", async () => {
+    const { github, chain, comments, settlements } = fakes(undefined, { 7: { state: "open" } });
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect(comments).toEqual([]);
+    expect(settlements).toEqual([]);
+  });
+});
+
+describe("losing a settle race", () => {
+  /** A chain whose settle fails the way the program does when another verdict landed first. */
+  function racing(promises: Record<number, PromiseRecord>, closedIssues: number[] = []) {
+    const f = fakes(undefined, promises, closedIssues);
+    const settle = async () => {
+      promises[7] = { state: "kept", settlementTx: "winnerSig" };
+      throw new Error("custom program error: PromiseSettled");
+    };
+    return { ...f, chain: { ...f.chain, settle } satisfies Chain };
+  }
+
+  it("stays quiet when a close loses to another verdict", async () => {
+    const { github, chain, comments, labels, removed } = racing({ 7: { state: "open" } });
+
+    await handleEvent(closed("issues"), { github, chain, appUrl: APP_URL });
+
+    expect({ comments, labels, removed }).toEqual({ comments: [], labels: [], removed: [] });
+  });
+
+  it("tells a command that lost the race what the winning verdict was", async () => {
+    const { github, chain, comments, labels } = racing({ 7: { state: "open" } });
+
+    await handleEvent(commented("/spam"), { github, chain, appUrl: APP_URL });
+
+    expect(labels).toEqual([]);
+    expect(comments.map((c) => c.body)).toEqual([
+      `This promise was already kept ([view transaction](${explorer("winnerSig")})).`,
+    ]);
+  });
+
+  it("does the same when a late-promise ping loses the race", async () => {
+    const { github, chain, comments, labels, removed } = racing({ 7: { state: "open" } }, [7]);
+
+    await handleEvent(ping(), { github, chain, appUrl: APP_URL });
+
+    expect({ comments, labels, removed }).toEqual({ comments: [], labels: [], removed: [] });
+  });
+
+  it("still fails when settle errors and the promise is still open", async () => {
+    const { github, chain } = fakes(undefined, { 7: { state: "open" } });
+    const broken: Chain = {
+      ...chain,
+      async settle() {
+        throw new Error("rpc down");
+      },
+    };
+
+    await expect(handleEvent(closed("issues"), { github, chain: broken, appUrl: APP_URL })).rejects.toThrow("rpc down");
+  });
+});
+
+describe("checkPromise", () => {
+  it("reports whether the chain has the promise yet, so the pay page knows to ask again", async () => {
+    const none = fakes();
+    const open = fakes(undefined, { 7: { state: "open" } });
+    const settled = fakes(undefined, { 7: { state: "kept", settlementTx: "sig" } });
+    const stranger = fakes([], { 7: { state: "open" } });
+    const event = { repo: REPO, number: 7 };
+
+    expect(await checkPromise(event, { github: none.github, chain: none.chain, appUrl: APP_URL })).toBe("not-found");
+    expect(await checkPromise(event, { github: open.github, chain: open.chain, appUrl: APP_URL })).toBe("found");
+    expect(await checkPromise(event, { github: settled.github, chain: settled.chain, appUrl: APP_URL })).toBe("found");
+    expect(await checkPromise(event, { github: stranger.github, chain: stranger.chain, appUrl: APP_URL })).toBe("not-found");
   });
 });

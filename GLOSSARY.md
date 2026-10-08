@@ -1,6 +1,6 @@
 # Pinky
 
-Pinky asks first-time contributors to a GitHub repo for a small refundable deposit before a maintainer looks at their issue or PR. It keeps maintainers' time for people willing to stake something on not being spam.
+Pinky asks first-time contributors to a GitHub repo for a small promise before a maintainer looks at their issue or PR. It keeps maintainers' time for people willing to stake something on not being spam.
 
 ## Language
 
@@ -25,11 +25,11 @@ _Avoid_: Depositor, payer, backer, co-signer
 ### Money
 
 **Promise**:
-The refundable deposit tied to one issue or PR.
+The money a promiser puts up for one issue or PR. It goes back if the promise is kept and to the maintainer wallet if it is broken.
 _Avoid_: Deposit, stake, bond, escrow
 
 **Kept**:
-A promise refunded to its promiser.
+A promise whose money goes back to its promiser, by a verdict or by a reclaim.
 _Avoid_: Refunded, returned, accepted
 
 **Broken**:
@@ -39,6 +39,10 @@ _Avoid_: Forfeited, slashed, burned
 **Verdict**:
 The maintainer's decision that settles a promise as kept or broken. `/accept` or a plain close keeps it, and `/spam` breaks it.
 _Avoid_: Ruling, judgement, resolution
+
+**Reclaim**:
+The promiser settling their own open promise as kept, signed with their own wallet, once it is more than 30 days old. There is no verdict and no arbiter, so a maintainer who never answers can't lock the money.
+_Avoid_: Withdraw, cancel, expire
 
 **Maintainer wallet**:
 The token account a project names when it signs up. Broken promises are paid into it.

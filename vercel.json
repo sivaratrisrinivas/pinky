@@ -1,5 +1,8 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "public",
-  "rewrites": [{ "source": "/pay", "destination": "/pay.html" }]
+  "rewrites": [
+    { "source": "/pay", "destination": "/pay.html" },
+    { "source": "/badge.svg", "destination": "/api/badge" }
+  ]
 }

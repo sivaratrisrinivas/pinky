@@ -2,147 +2,232 @@
 
 Pinky promise this isn't spam.
 
-Pinky asks first-time contributors to a GitHub repo for a small refundable deposit before a maintainer looks at their issue or PR. It keeps maintainers' time for people willing to stake something on not being spam. The money sits in a Solana escrow program until a maintainer gives a verdict.
+![Pinky-protected](https://pinky-bot.vercel.app/badge.svg?repo=sivaratrisrinivas/pinky-demo)
 
-Built for a hackathon on **Solana devnet** with a test USDC mint. Not for real money.
+Pinky is a GitHub App and a small Solana escrow program. When a first-time contributor opens an issue or PR, Pinky asks for a refundable promise of 5 USDC. The maintainer closes the issue or comments `/accept` and the money goes back. The maintainer comments `/spam` and the money goes to the project's maintainer wallet.
+
+It runs on Solana devnet with a test USDC mint, on one demo repo, [sivaratrisrinivas/pinky-demo](https://github.com/sivaratrisrinivas/pinky-demo). It does not handle real money.
+
+## Why
+
+Opening an issue or a PR costs nothing, and reading one costs a maintainer minutes. AI-generated PRs and slop issue reports have pushed that imbalance past what many maintainers can absorb. A script that opens 40 PRs before breakfast looks the same as a newcomer who cares.
+
+Maintainers end up with two bad options. They read everything and burn time, or they close everything from strangers and turn away real newcomers. Pinky adds a third. A stranger stakes a small refundable amount on not being spam. A real contributor gets it back and loses nothing. A spammer pays for the time they cost.
+
+## What it does
+
+1. A first-timer opens an issue or PR. Pinky labels it `awaiting-promise` and comments a friendly pay link.
+2. The first-timer opens the link, signs in, taps "Get test USDC" and then "Make the promise". The label becomes `promised` once the promise exists on-chain.
+3. A maintainer with write access closes the issue, merges the PR or comments `/accept`. The promise is kept and the money goes to the wallet that paid.
+4. If the maintainer comments `/spam`, the promise is broken and the money goes to the maintainer wallet.
+5. Pinky comments the transaction link either way, and the label ends as `promise-kept` or `promise-broken`.
+
+Anyone can pay a first-timer's link, so an existing contributor can vouch for a newcomer. The refund goes back to whoever paid ([ADR 0002](docs/adr/0002-promises-belong-to-wallets-not-github-users.md)). Collaborators, members and returning contributors are never asked. Repos that aren't set up as projects are ignored.
+
+The vocabulary is in [GLOSSARY.md](GLOSSARY.md): project, maintainer, first-timer, promiser, promise, kept, broken, verdict, maintainer wallet, arbiter.
 
 ## How it works
 
-1. A first-timer opens an issue or PR on a project. The Pinky GitHub App labels it `awaiting-promise` and comments a friendly pay link.
-2. They sign in on the pay page with a Google account (Phantom Connect has no bare-email option yet; see Known limits), get test USDC and make a 5 USDC **promise**. The label flips to `promised`.
-3. A maintainer closes the issue or comments `/accept`, and the promise is **kept**: the money goes back to whoever paid. If the maintainer comments `/spam`, the promise is **broken** and the money goes to the project's maintainer wallet.
-4. The bot comments the transaction link either way.
+### Architecture
 
-Anyone can make a promise for a first-timer by paying their link, which is how existing contributors vouch for newcomers (ADR 0002).
+```mermaid
+flowchart LR
+    subgraph GH["GitHub"]
+        Repo["Demo repo: issues, PRs, comments"]
+        README["Repo README with badge"]
+    end
 
-The vocabulary (project, maintainer, first-timer, promiser, promise, kept, broken, verdict, maintainer wallet, arbiter) is defined in [GLOSSARY.md](GLOSSARY.md).
+    subgraph Vercel["Vercel: pinky-bot.vercel.app"]
+        Webhook["api/webhook.ts"]
+        Handle["handleEvent"]
+        PayFns["api/pay, faucet, deposit-tx, check-promise"]
+        Badge["api/badge.ts"]
+        Page["Pay page: public/pay.html and web/pay.ts"]
+    end
 
-## Trust model
+    Phantom["Phantom wallet"]
 
-In v1 the GitHub App holds one **arbiter** keypair and signs every verdict for a maintainer who comments a command or closes the issue ([ADR 0001](docs/adr/0001-app-holds-the-arbiter-key.md)). A leaked key could settle any open promise, but the program only lets the arbiter pick the outcome:
+    subgraph Solana["Solana devnet"]
+        Program["Escrow program"]
+        Accounts["Project, promise and vault accounts"]
+        Mint["Test USDC mint"]
+    end
 
-- a kept promise is paid only to the token account that paid the promise
-- a broken promise is paid only to the project's maintainer wallet
-- a settled promise can't be settled again
+    Repo -->|"signed webhook"| Webhook
+    Webhook --> Handle
+    Handle -->|"labels and comments, Octokit"| Repo
+    Handle -->|"read promise, refund or forfeit signed by the arbiter key"| Program
+    Page --> PayFns
+    PayFns -->|"read status, ping"| Handle
+    PayFns -->|"faucet wallet sends USDC and SOL"| Mint
+    Page -->|"unsigned deposit transaction"| Phantom
+    Phantom -->|"signed deposit"| Program
+    Program --- Accounts
+    README -->|"loads image"| Badge
+    Badge -->|"count promises"| Accounts
+```
 
-Both destinations are read from stored accounts, never from the caller. In v2 the maintainer's own wallet signs.
+The app has one entry point, `handleEvent` in `src/handle-event.ts`. It reaches the outside world through two ports, `Github` and `Chain`. Tests use in-memory fakes of both. The real adapters are Octokit in `src/github.ts` and a Solana client in `src/chain.ts`.
+
+Three keys matter:
+
+| Key | Held by | Used for |
+| --- | --- | --- |
+| Arbiter | The GitHub App, in `ARBITER_SECRET_KEY` on Vercel | Signs `refund` and `forfeit` |
+| Faucet wallet | The operator, in `FAUCET_SECRET_KEY` | Funds the faucet endpoint with test USDC and devnet SOL |
+| Promiser wallet | The first-timer, in Phantom | Signs the `deposit` that makes the promise |
+
+### One promise, end to end
+
+```mermaid
+sequenceDiagram
+    participant F as First-timer
+    participant G as GitHub
+    participant A as Pinky app
+    participant P as Pay page
+    participant S as Solana escrow
+    participant M as Maintainer
+
+    F->>G: opens an issue
+    G->>A: webhook issues.opened
+    A->>G: label awaiting-promise, comment with pay link
+    F->>P: opens the link, taps Get test USDC
+    P->>S: faucet sends 5 test USDC and a little SOL
+    F->>P: taps Make the promise, signs in Phantom
+    P->>S: deposit, 5 USDC moves into the vault
+    P->>A: ping with repo and issue number
+    A->>S: read the promise, never trust the ping
+    A->>G: swap label to promised
+    M->>G: comments /accept or /spam, or closes the issue
+    G->>A: webhook
+    A->>S: refund to the promiser or forfeit to the maintainer wallet
+    A->>G: comment the transaction link, label promise-kept or promise-broken
+```
+
+### Trust model
+
+In v1 the app holds one arbiter keypair and signs every verdict on behalf of a maintainer who comments or closes ([ADR 0001](docs/adr/0001-app-holds-the-arbiter-key.md)). A leaked key could settle any open promise, but the program limits what the arbiter can do. It picks the outcome and nothing else.
+
+- A kept promise is paid only to the token account that paid the promise.
+- A broken promise is paid only to the project's maintainer wallet.
+- A settled promise can't be settled again, so the first verdict is final.
+- Both destinations come from stored accounts, never from the caller.
+- The check-promise ping carries no proof. The app reads the chain and acts only on what it finds.
+
+In v2 the maintainer's own wallet would sign. Separately, `reclaim` lets a promiser take back an open promise after 30 days without any arbiter, so an absent maintainer can't lock money forever.
 
 ## Status
 
-| Piece | State |
-| --- | --- |
-| Escrow program on devnet (`escrow/`) | Done ([#2](https://github.com/sivaratrisrinivas/pinky/issues/2)) |
-| Demo repo, GitHub App, keys, deploy secrets (`scripts/setup-github-app.sh`) | Done ([#3](https://github.com/sivaratrisrinivas/pinky/issues/3)) |
-| Ask first-timers for a promise (`handleEvent`, webhook) | Done, live at https://pinky-bot.vercel.app ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4)) |
-| Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Done. `/spam`, `/accept`, an issue close and the already-settled reply ran live on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
-| Pay page with Google sign-in and faucet | Live at `/pay` with the Phantom extension and verified on devnet. Email sign-in is the one open gap: Google sign-in is built but needs `PHANTOM_APP_ID` ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6)) |
-| Pay page pings the app so the label flips | Not started ([#7](https://github.com/sivaratrisrinivas/pinky/issues/7)) |
-| README badge, seed data, full-journey runs | Not started ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8), [#9](https://github.com/sivaratrisrinivas/pinky/issues/9), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
+Tickets #2 to #11 are closed and the full journey has run live on devnet. The details are in the ticket comments, and the spec is [#1](https://github.com/sivaratrisrinivas/pinky/issues/1).
 
-The spec is [#1](https://github.com/sivaratrisrinivas/pinky/issues/1) and the day-by-day plan is in [PLAN.md](PLAN.md).
+| Piece | Where it ran | Ticket |
+| --- | --- | --- |
+| Escrow program with keep and break | Devnet, smoke script prints both links | [#2](https://github.com/sivaratrisrinivas/pinky/issues/2) |
+| Demo repo, GitHub App, keys, deploy secrets | Done by `scripts/setup-github-app.sh` | [#3](https://github.com/sivaratrisrinivas/pinky/issues/3) |
+| Ask first-timers for a promise | Live on the demo repo | [#4](https://github.com/sivaratrisrinivas/pinky/issues/4) |
+| Verdicts from `/accept`, `/spam`, closes and merged PRs | Live on the demo repo | [#5](https://github.com/sivaratrisrinivas/pinky/issues/5) |
+| Pay page with faucet | Live at `/pay` with the Phantom extension | [#6](https://github.com/sivaratrisrinivas/pinky/issues/6) |
+| Ping flips the label, late deposits are kept | Live, no manual ping | [#7](https://github.com/sivaratrisrinivas/pinky/issues/7) |
+| README badge | Live, counts move after a promise and a `/spam` | [#8](https://github.com/sivaratrisrinivas/pinky/issues/8) |
+| Seeded demo issues | Ten issues, #10 to #19 on the demo repo | [#9](https://github.com/sivaratrisrinivas/pinky/issues/9) |
+| `reclaim` after 30 days | Anchor tests, program upgraded on devnet | [#10](https://github.com/sivaratrisrinivas/pinky/issues/10) |
+| Five full journeys, no code change | Demo repo issues #20 to #24 | [#11](https://github.com/sivaratrisrinivas/pinky/issues/11) |
+
+Two things have not run. Email sign-in is unverified, because Phantom's developer portal stopped taking new accounts on 2026-10-08 and there is no `PHANTOM_APP_ID`. Every live run used the Phantom browser extension. And no `reclaim` has run on devnet yet, since it needs a promise older than 30 days.
 
 ## Repo layout
 
 ```
 escrow/                  Anchor program, tests and operator scripts
-  programs/escrow/       init_project, deposit, refund, forfeit
+  programs/escrow/       init_project, deposit, refund, forfeit, reclaim
   tests/                 behaviour tests on a local validator
-  scripts/               setup-project, smoke and promise, run against devnet
-api/webhook.ts           Vercel function: verifies the GitHub webhook and calls handleEvent
-api/pay.ts, faucet.ts, deposit-tx.ts   Vercel functions behind the pay page
-web/pay.ts               pay page client, bundled by `npm run build` into public/pay.js
-public/pay.html          the pay page, served at /pay (see vercel.json)
-.vercelignore            keeps escrow/, scripts/ and docs/ out of deploys
-src/                     handleEvent and its GitHub and chain ports, plus the real adapters
-scripts/                 setup-github-app.sh, the human-only setup wizard
+  scripts/               setup-project, smoke, promise, fund-faucet
+api/webhook.ts           verifies the GitHub webhook and calls handleEvent
+api/pay.ts, faucet.ts, deposit-tx.ts, check-promise.ts   functions behind the pay page
+api/badge.ts             the README badge, served at /badge.svg
+web/pay.ts               pay page client, bundled into public/pay.js by npm run build
+public/pay.html          the pay page, served at /pay
+src/                     handleEvent, its ports and the real adapters
+scripts/                 setup-github-app.sh, pay-e2e.ts, seed-issues.ts
 docs/adr/                architecture decisions
-docs/agents/             issue tracker, triage labels and domain doc conventions
-GLOSSARY.md              the project's vocabulary
-PLAN.md                  build plan to Oct 12
+GLOSSARY.md              the vocabulary
+PLAN.md                  the original build plan
 ```
 
 ## Escrow program
 
-Program ID `2nAVrgq7xYseUPES5ZUxfQ2pKcyWkiRJNxbgAWca7FCU`, deployed on devnet. Instructions:
+Program ID `2nAVrgq7xYseUPES5ZUxfQ2pKcyWkiRJNxbgAWca7FCU`, deployed on devnet.
 
 | Instruction | Signer | Effect |
 | --- | --- | --- |
-| `init_project(repo_id, amount, arbiter)` | operator | Creates the project for a GitHub repo ID and its token vault. Stores the arbiter, mint, maintainer wallet and promise amount. |
-| `deposit(issue_number)` | promiser | Creates the promise for one issue or PR number and moves the amount into the vault. Fails if one already exists. |
-| `refund` | arbiter | Keeps the promise: vault to the promiser's token account. |
-| `forfeit` | arbiter | Breaks the promise: vault to the maintainer wallet. |
+| `init_project(repo_id, amount, arbiter)` | operator | Creates the project for a GitHub repo ID and its vault. Stores the arbiter, mint, maintainer wallet and promise amount. |
+| `deposit(issue_number)` | promiser | Creates the promise for one issue or PR number and moves the amount into the vault. Fails if one exists. |
+| `refund` | arbiter | Keeps the promise. Vault to the promiser's token account. |
+| `forfeit` | arbiter | Breaks the promise. Vault to the maintainer wallet. |
+| `reclaim` | promiser | Takes back an open promise more than 30 days old and marks it kept. Fails on a younger or settled promise and for any other signer. |
 
-Accounts are program-derived addresses: project from `["project", repo_id]`, promise from `["promise", project, issue_number]`, vault from `["vault", project]` (owned by the project). Settled promises stay on-chain as `Kept` or `Broken`, so the app can read them later for "already settled" replies and badge counts.
+Accounts are program-derived addresses. The project comes from `["project", repo_id]`, the promise from `["promise", project, issue_number]` and the vault from `["vault", project]`. Settled promises stay on-chain as `Kept` or `Broken`, so the app can read them for "already settled" replies and the badge counts.
 
-Known limits in v1:
+Limits in v1:
 
-- `init_project` is permissionless, so anyone could create a project for a repo ID first. The app should check a project's arbiter and maintainer wallet before trusting it.
+- `init_project` is permissionless. Anyone could create a project for a repo ID first, so the app checks that a project names its own arbiter before trusting it.
 - A refund fails for good if the promiser closes their token account after depositing. The promise can then only be broken.
 
-### Develop
+### Develop and deploy
 
-Needs Rust, the Solana CLI, Anchor 1.2 and Node. Anchor 1.2 defaults to surfpool for tests, so `npm test` selects `solana-test-validator` with `ANCHOR_TEST_VALIDATOR=legacy`.
+You need Rust, the Solana CLI, Anchor 1.2 and Node. Anchor 1.2 defaults to surfpool for tests, so `npm test` sets `ANCHOR_TEST_VALIDATOR=legacy` to use `solana-test-validator`.
 
 ```bash
 cd escrow
 npm install
-npm test          # builds, then runs the tests on a local validator
+npm test             # builds, then runs 12 tests on a local validator
 npm run typecheck
 ```
 
-The tests call the instructions the way a client would and check balances and promise state: deposit then refund, deposit then forfeit, duplicate deposits, double settlement, non-arbiter signers, vouching, redirected destinations and cross-project substitution.
+The tests call the instructions the way a client would and check balances and promise state. They cover keep, break, duplicate promises, double settlement, non-arbiter signers, vouching, redirected destinations, cross-project substitution and `reclaim`.
 
-### Deploy and run on devnet
+A local validator can't move its clock. The 30-day `reclaim` tests load three open promises that are already old, from `tests/fixtures/aged-*.json` listed in `Anchor.toml`. Run `npm run fixtures` to regenerate them if the `Promise` layout changes.
 
 ```bash
 cd escrow
-anchor deploy --provider.cluster devnet     # needs about 3 devnet SOL
-npm run setup-project -- <owner>/<repo>     # test USDC mint, arbiter key and project; safe to re-run
-npm run smoke                               # keep and break on devnet, prints two explorer links
-npm run promise -- <issue-number>           # a 5 test USDC promise for a real demo issue, to settle from GitHub
+anchor deploy --provider.cluster devnet     # about 3 devnet SOL
+npm run setup-project -- <owner>/<repo>     # test USDC mint, arbiter key and project, safe to re-run
+npm run smoke                               # one keep and one break on devnet, prints two explorer links
+npm run promise -- <issue-number>           # a 5 test USDC promise for a real demo issue
 ```
 
-Keys and the generated `devnet.json` live in `escrow/.keys/` and are gitignored. The wizard `scripts/setup-github-app.sh` creates the demo repo, GitHub App, arbiter and faucet keypairs and `.env` first; `setup-project` reuses its arbiter.
+If a new build is larger than the deployed program, run `solana program extend <program-id> <bytes> --url devnet` first. The `reclaim` upgrade needed 10240 more bytes.
 
-The demo project is `sivaratrisrinivas/pinky-demo` (repo ID 1407786691) with the test USDC mint `BATkjUKVJzLi3YNT7wKvmA6Eh3rkN9wuCpgCNnzL9Wn3`.
+Keys and the generated `devnet.json` live in `escrow/.keys/` and are gitignored. The demo project is `sivaratrisrinivas/pinky-demo`, repo ID 1407786691, with test USDC mint `BATkjUKVJzLi3YNT7wKvmA6Eh3rkN9wuCpgCNnzL9Wn3`.
 
 ## GitHub App
 
-The bot runs as one Vercel function at `https://pinky-bot.vercel.app/api/webhook`. GitHub sends it `issues`, `pull_request` and `issue_comment` events.
+The bot is one Vercel function at `https://pinky-bot.vercel.app/api/webhook`. GitHub sends it `issues`, `pull_request` and `issue_comment` events. The function checks the `X-Hub-Signature-256` header against `GITHUB_WEBHOOK_SECRET`, answers 401 on a bad signature, drops other events and calls `handleEvent`. `handleEvent` acts only on repos that are projects on-chain.
 
-For each request the function:
+**Ask.** On `issues.opened` or `pull_request.opened` by an author with association `NONE`, `FIRST_TIMER` or `FIRST_TIME_CONTRIBUTOR`, it adds `awaiting-promise` and posts the comment with the pay link `https://pinky-bot.vercel.app/pay?repo=<owner>%2F<name>&n=<number>`. Everyone else is ignored.
 
-1. Checks the `X-Hub-Signature-256` header against `GITHUB_WEBHOOK_SECRET`. A bad or missing signature gets a 401.
-2. Ignores every event except `issues`, `pull_request` and `issue_comment`.
-3. Calls `handleEvent`.
-
-`handleEvent` does one of two things, and only for repos that are projects on-chain:
-
-**Ask.** On `issues.opened` or `pull_request.opened` by a first-timer (`NONE`, `FIRST_TIMER` or `FIRST_TIME_CONTRIBUTOR`) it adds the `awaiting-promise` label and posts the comment, with a pay link of the form `https://pinky-bot.vercel.app/pay?repo=<owner>%2F<name>&n=<number>`.
-
-**Settle.** A verdict is `/accept` or `/spam` on a line of its own in a new comment, or closing an issue or closing or merging a PR. Comments from bots are ignored, which covers the App's own. Then:
+**Settle.** A verdict is `/accept` or `/spam` on a line of its own, or closing an issue, or closing or merging a PR. Comments from bots are ignored, which includes the app's own.
 
 | Situation | Result |
 | --- | --- |
-| Sender has no write access, by command | A short reply, no chain call. |
-| Sender has no write access, by close | Nothing. The author closing their own issue is not a verdict. |
-| Open promise | `/accept` or a close keeps it, `/spam` breaks it. The bot comments the explorer link, removes `awaiting-promise` and `promised`, and adds `promise-kept` or `promise-broken`. |
-| Settled promise, by command | "This promise was already kept/broken" with the original transaction link. No chain call. The first verdict is final. |
+| Command from someone without write access | A short reply and no chain call. |
+| Close by someone without write access | Nothing. A first-timer closing their own issue is not a verdict. |
+| Open promise | `/accept` or a close keeps it, `/spam` breaks it. The bot comments the explorer link and sets `promise-kept` or `promise-broken`. |
+| Settled promise, by command | "This promise was already kept" or "broken", with the first link. No chain call. |
 | Settled promise, by close | Nothing. Closing after `/spam` is normal. |
 | No promise | Only `awaiting-promise` is removed. |
+| Two verdicts race | The second settle fails on-chain with `PromiseSettled`. The app re-reads the promise and treats it as already settled. |
 
-`handleEvent` in `src/handle-event.ts` is the only entry point. It reaches the outside world through two ports, and the tests use in-memory fakes of both.
-
-| Port | Methods today | Real adapter |
+| Port | Methods | Real adapter |
 | --- | --- | --- |
-| `Github` | `addLabel`, `removeLabel`, `comment`, `hasWriteAccess` | `src/github.ts`, Octokit with an installation token. `hasWriteAccess` is the collaborator permission being `write` or `admin`. |
-| `Chain` | `readProject`, `readPromise`, `settle` | `src/chain.ts`, decodes accounts over RPC and signs `refund` or `forfeit` with the arbiter key |
+| `Github` | `addLabel`, `removeLabel`, `comment`, `hasWriteAccess`, `isOpen` | `src/github.ts`, Octokit with an installation token |
+| `Chain` | `readProject`, `readPromise`, `countPromises`, `settle` | `src/chain.ts`, decodes accounts over RPC and signs with the arbiter key |
 
-`readProject` returns null when the project account doesn't exist, isn't a `Project` account, or names a different arbiter than ours. The last check matters because `init_project` is permissionless. Author association comes from the webhook payload, not from an extra API call. `readPromise` returns null, `open`, or `kept`/`broken` with the latest successful transaction on the promise account, which is the settlement. `settle` rebuilds the instruction from the stored accounts, so the destination is always the promiser's token account for kept and the maintainer wallet for broken. Counting promises joins the `Chain` port in [#8](https://github.com/sivaratrisrinivas/pinky/issues/8).
+`readProject` returns null when the account is missing, is not a `Project`, or names another arbiter. `settle` rebuilds the instruction from the stored accounts, so the destination is the promiser's token account for kept and the maintainer wallet for broken. The settlement link is the latest successful transaction on the promise account.
 
 ```bash
 npm install
-npm test          # 68 tests: handleEvent, the chain adapter, signature check, the pay page core
+npm test          # 109 tests
 npm run typecheck
 ```
 
@@ -152,76 +237,79 @@ npm run typecheck
 vercel deploy --prod --yes     # from the repo root
 ```
 
-Things that broke the first deploy:
+Set `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_BASE64`, `GITHUB_WEBHOOK_SECRET` and `ARBITER_SECRET_KEY` on the Vercel project. The pay page also needs `FAUCET_SECRET_KEY`. `RPC_URL` is optional and defaults to the public devnet endpoint. Three things broke the first deploy:
 
-- Deployment Protection (Vercel Authentication) must be off, or GitHub gets a login page instead of the function.
-- `.vercelignore` excludes `escrow/`, `scripts/` and `docs/`. A local test validator leaves a socket file in `escrow/.anchor/` that the Vercel CLI can't upload.
-- `package.json` pins `uuid` to 9.x through `overrides`. `@solana/web3.js` 1.x pulls an ESM-only `uuid` that crashes `require()` on cold start.
-
-Environment variables on the Vercel project: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_BASE64`, `GITHUB_WEBHOOK_SECRET` and `ARBITER_SECRET_KEY`. The pay link host comes from Vercel's `VERCEL_PROJECT_PRODUCTION_URL`. `RPC_URL` is optional and defaults to the public devnet endpoint.
-
-### Verified live
-
-On 2026-10-08, with the App installed on `sivaratrisrinivas/pinky-demo`:
-
-- [Issue 1](https://github.com/sivaratrisrinivas/pinky-demo/issues/1), opened by the owner account, got no label and no comment.
-- [Issue 2](https://github.com/sivaratrisrinivas/pinky-demo/issues/2), opened by a second account with association `NONE`, got `awaiting-promise` and the comment within seconds.
-- `readProject` against the real devnet project for repo ID 1407786691 returns the project for the matching arbiter and null for any other.
-- [Issue 4](https://github.com/sivaratrisrinivas/pinky-demo/issues/4) had a promise made with `npm run promise -- 4`. The owner's `/spam` comment got the bot reply "Promise broken" with [this `forfeit` transaction](https://explorer.solana.com/tx/7SwW41UUic7s5yq6Wuk5Fpo9e4bUuwbvRzBj9XSjVFtabCjgoFipx68pdmvANfbrWY45hXGKJCBV5cqZpU7Lawp?cluster=devnet) and the `promise-broken` label. `/accept` and closes were covered by tests only at that point.
-
-Later the same day:
-
-- [Issue 5](https://github.com/sivaratrisrinivas/pinky-demo/issues/5): a promise, then the owner's `/accept`. The bot replied "Promise kept" with [the `refund` transaction](https://explorer.solana.com/tx/2an11UeAoB3TGefTGFcSCSKqfjMSVPjG8L45PPidLZAJCYNqEWGcW4yxjwRiBTtH25ASt3i7fd6hjYRogwr778mV?cluster=devnet) and the `promise-kept` label. A `/spam` after that got "This promise was already kept" with the same link, and the label stayed.
-- [Issue 6](https://github.com/sivaratrisrinivas/pinky-demo/issues/6): a promise, then the owner closed the issue. Same "Promise kept" reply and label.
-- Both promisers' token accounts read 5 test USDC after the refund.
-- [Issue 7](https://github.com/sivaratrisrinivas/pinky-demo/issues/7): a promise, then `/accept` from a second account without write access. The bot replied that only people with write access can settle a promise. No label was added, the issue stayed open, the promise state stayed open and the promiser's token account stayed at 0.
-- [PR 8](https://github.com/sivaratrisrinivas/pinky-demo/pull/8): a promise, then the owner merged the PR. The bot replied "Promise kept" with [the `refund` transaction](https://explorer.solana.com/tx/5sKj7KHbdnWrjt7dy22gAqTQti86jepGcDCkwvd9qPdC82JZ1yyytTTA2ytoWTNxv5jMVip6boitKpCnELfFaR3o?cluster=devnet), added `promise-kept`, and the promiser's token account read 5 test USDC.
-
-Every acceptance criterion of #5 has now run live. Closing a PR without merging was not run separately, but it takes the same path as a merge.
-
-### Known limits
-
-- A webhook retry after a failed comment can post the comment twice. Nothing checks for an existing label first.
-- Two verdicts racing, such as `/accept` and a close seconds apart, can both read the promise as open. The second chain call fails with `PromiseSettled`, the webhook returns an error, and GitHub shows a failed delivery. The money is safe.
-- The settlement link comes from `getSignaturesForAddress` on the public RPC, which only looks back 10 transactions on the promise account. A settled promise whose history the RPC can't serve gets the "already kept" reply without a link.
-- The comment says "5 USDC" as fixed text. The amount is on the project account, and the `Project` type doesn't carry it yet.
+- Deployment Protection must be off, or GitHub gets a login page instead of the function.
+- `.vercelignore` keeps `escrow/`, `scripts/` and `docs/` out of the upload. A local test validator leaves a socket file in `escrow/.anchor/` that the Vercel CLI can't upload.
+- `package.json` pins `uuid` to 9.x through `overrides`. `@solana/web3.js` 1.x pulls an ESM-only `uuid` that crashes on cold start.
 
 ## Pay page
 
-`/pay?repo=<owner>/<name>&n=<number>` is where the bot's link lands. The page shows the issue and the amount, then: sign in, **Get test USDC**, **Make the promise**, and a Solana Explorer link.
+`/pay?repo=<owner>/<name>&n=<number>` is where the bot's link lands. It shows the issue and the amount, then offers sign-in, "Get test USDC", "Make the promise" and an explorer link.
 
 | Function | What it does |
 | --- | --- |
-| `GET /api/pay` | Status of the link: `ready`, `closed`, `promised`, `unknown-issue` or `not-a-project`. The page shows no pay button unless it is `ready`. |
-| `POST /api/faucet` | Tops a wallet up to 5 test USDC and 0.01 devnet SOL from the faucet wallet, creating its token account. Asking again sends nothing. |
-| `POST /api/deposit-tx` | Re-checks the status and returns an unsigned `deposit` transaction paid by the wallet. The browser signs it with the embedded wallet and sends it to devnet. |
+| `GET /api/pay` | Returns `ready`, `closed`, `promised`, `unknown-issue` or `not-a-project`. The page shows a pay button only for `ready`. |
+| `POST /api/faucet` | Tops a wallet up to 5 test USDC and 0.01 devnet SOL and creates its token account. Asking again sends nothing. |
+| `POST /api/deposit-tx` | Re-checks the status and returns an unsigned `deposit` transaction. The browser signs it and sends it to devnet. |
+| `POST /api/check-promise` | The ping after a promise. It takes `{ repo, n }` and answers `{ ok: true, found }`. |
 
-The logic is in `src/pay.ts` behind three ports (GitHub, chain, faucet) with fakes in `src/pay.test.ts`. Adapters are in `src/pay-adapters.ts`.
+After the promise confirms, the page pings `/api/check-promise`. The app then reads the project and the promise from the chain.
 
-### Set up sign-in
+| Chain says | Result |
+| --- | --- |
+| No promise | Nothing changes. |
+| Open promise, issue open | `awaiting-promise` becomes `promised`. |
+| Open promise, issue closed | The late promise is kept at once. The bot comments the link and sets `promise-kept`. |
+| Settled promise | Nothing changes, so a forged ping can't undo a verdict. |
 
-1. Create an app at https://phantom.com/portal. Allow the origin `https://pinky-bot.vercel.app` and the redirect URL `https://pinky-bot.vercel.app/pay`.
-2. Set `PHANTOM_APP_ID` on the Vercel project. Also set `FAUCET_SECRET_KEY` (same JSON array format as `ARBITER_SECRET_KEY`). `USDC_MINT` is optional and defaults to the demo mint.
-3. Stock the faucet with test USDC: `cd escrow && npm run fund-faucet` (mints 1000 from the operator key, which is the mint authority; the faucet wallet needs devnet SOL too).
-4. Without `PHANTOM_APP_ID` the page offers only the Phantom browser extension. Nothing pretends to be email sign-in.
+The app reads at `confirmed` and can lag the page by a moment. `pingUntilFound` in `src/ping.ts` pings again after 1, 3 and 10 seconds until `found` is true, then gives up quietly.
 
-`npm run pay-e2e -- <owner/repo> <issue>` plays the page against devnet with a throwaway wallet: faucet, deposit, then status. It needs `.env` and makes a real promise on that issue.
+### Sign-in
 
-### Verified live
+Without `PHANTOM_APP_ID` the page offers only the Phantom browser extension, and nothing pretends to be email sign-in. With an ID it also offers Google sign-in. To finish the email gap:
 
-On 2026-10-08 a fresh keypair with no balance got 5 test USDC and 0.01 SOL from the faucet, a second faucet call sent nothing, and the deposit transaction built by `/api/deposit-tx`'s code signed by that wallet alone created the promise for `pinky-demo` issue 2. Then, in Chrome with the Phantom extension, a new wallet on the deployed page got test USDC from the faucet and made the promise for [`pinky-demo` issue 3](https://github.com/sivaratrisrinivas/pinky-demo/issues/3). The explorer link opens a finalized devnet transaction that called the escrow program. Phantom simulates on mainnet by default, so it showed "Failed to simulate" and needed "Confirm (unsafe)" twice. Not yet run: Google sign-in through a Phantom embedded wallet, which needs `PHANTOM_APP_ID` (the Portal wasn't accepting new accounts on 2026-10-08).
+1. Create an app at https://phantom.com/portal. Allow the origin `https://pinky-bot.vercel.app` and the redirect `https://pinky-bot.vercel.app/pay`.
+2. Set `PHANTOM_APP_ID` on Vercel and redeploy. No code change is needed.
+3. Run `cd escrow && npm run fund-faucet` to mint 1000 test USDC into the faucet wallet. The faucet wallet needs devnet SOL too.
 
-### What is left on #6
+In Phantom, turn on Testnet Mode and pick Solana Devnet. Otherwise Phantom simulates the transaction on mainnet and rejects it with "Blockhash not found".
 
-Everything in the issue's acceptance list is checked live except signing in with only an email. The Phantom Developer Portal stopped accepting new accounts on 2026-10-08, so there is no `PHANTOM_APP_ID` and the page uses the extension fallback the issue allows. Once an app exists: set `PHANTOM_APP_ID` on Vercel, add the origin and redirect URL in the Portal, redeploy, and run the page with a Google account.
+`npm run pay-e2e -- <owner/repo> <issue>` plays the page with a throwaway wallet. It needs `.env` and makes a real promise on that issue.
 
-### Known limits
+## Badge
 
-- Sign-in is Google, not a bare email: `@phantom/browser-sdk` 2.0.4 offers Google, Apple, the Phantom app and the extension. Email sign-in is next.
-- The faucet has no rate limit. A wallet can ask again after it spends its USDC, and anyone can make fresh wallets. It is devnet money, but the faucet wallet's SOL is finite.
-- Two simultaneous faucet calls for one wallet can both send.
-- The page sends the signed transaction to the public devnet RPC, while the functions use `RPC_URL`.
-- Each status check makes three GitHub calls to find the repo ID and issue state.
+`GET /badge.svg?repo=<owner>/<name>` returns an SVG reading "Pinky-protected: N promises, M broken". N counts every promise made for the project, open ones included. M counts the broken ones. Both come from `countPromises` on the chain. A repo that isn't a project gets a grey "not set up" badge with status 200, so a README image never breaks. Responses are cached for 60 seconds. Add it to a README with:
+
+```markdown
+![Pinky-protected](https://pinky-bot.vercel.app/badge.svg?repo=<owner>/<name>)
+```
+
+`countPromises` calls `getProgramAccounts` on the public RPC, filtered by account size and project address. That is fine for one project and would need an index for many.
+
+## Seeded demo issues
+
+`npm run seed-issues` opens ten realistic issues on the demo repo from test GitHub accounts, so the repo looks used. They are not reports from real users, and the demo repo's README says so.
+
+```bash
+SEED_GITHUB_TOKENS=ghp_aaa,ghp_bbb   # test accounts with public_repo scope, not the owner, not collaborators
+SEED_OWNER_TOKEN=$(gh auth token)    # optional, adds the "seeded" note to the demo README
+
+npm run seed-issues -- --dry-run     # lists what it would open
+npm run seed-issues                  # opens them, then waits for each label and bot comment
+```
+
+A title that already exists is skipped, so a re-run opens only what is missing. The script exits non-zero if an issue doesn't get the label and the bot comment within a minute. The run on 2026-10-09 used one account, `askubusku18-dum`, so all ten issues come from it.
+
+## Known limits
+
+- Email sign-in is unverified. See the Sign-in section.
+- A webhook retry after a failed comment can post the comment twice. Nothing checks for an existing label first.
+- The settlement link comes from the last 10 transactions on the public RPC. A promise whose history the RPC can't serve gets the "already kept" reply without a link.
+- The comment says "5 USDC" as fixed text. The amount lives on the project account.
+- The faucet has no rate limit, and two simultaneous calls for one wallet can both send. It is devnet money, but the faucet wallet's SOL is finite.
+- Nothing posts a label or comment after `reclaim`, so the issue keeps `promised`.
+- Each pay-page status check makes three GitHub calls to find the repo ID and the issue state.
 
 ## Not in v1
 

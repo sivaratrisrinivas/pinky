@@ -5,6 +5,7 @@ import {
   TransactionInstruction,
   sendAndConfirmTransaction,
   type Connection,
+  type GetProgramAccountsFilter,
   type Keypair,
 } from "@solana/web3.js";
 import type { Chain, Outcome, PromiseRecord } from "./handle-event.js";
@@ -32,6 +33,8 @@ const MAINTAINER_WALLET_OFFSET = 8 + 8 + 32 + 32;
 // promiser_token, amount u64, state u8, created_at i64, bump u8.
 const PROMISER_TOKEN_OFFSET = 8 + 32 + 8 + 32;
 const PROMISE_STATE_OFFSET = 8 + 32 + 8 + 32 + 32 + 8;
+const PROMISE_ACCOUNT_SIZE = 8 + 32 + 8 + 32 + 32 + 8 + 1 + 8 + 1;
+const PROMISE_PROJECT_OFFSET = 8;
 const PROMISE_STATES = ["open", "kept", "broken"] as const;
 
 export interface Rpc {
@@ -40,6 +43,10 @@ export interface Rpc {
     address: PublicKey,
     options: { limit: number }
   ): Promise<{ signature: string; err: unknown }[]>;
+  getProgramAccounts: (
+    programId: PublicKey,
+    config: { filters: GetProgramAccountsFilter[] }
+  ) => Promise<readonly { account: { data: Buffer | Uint8Array } }[]>;
 }
 
 /** Signs one instruction with `signer` and waits for it to confirm. */
@@ -118,6 +125,23 @@ export function createChain(options: {
       const state = PROMISE_STATES[data.readUInt8(PROMISE_STATE_OFFSET)];
       if (!state) throw new Error(`Promise ${address} has an unknown state`);
       return state === "open" ? { state } : { state, settlementTx: await settlementTx(address) };
+    },
+
+    async countPromises(repoId) {
+      if (!(await readProjectData(repoId))) return null;
+
+      const project = projectAddress(PROGRAM_ID, BigInt(repoId));
+      const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
+        filters: [
+          { dataSize: PROMISE_ACCOUNT_SIZE },
+          { memcmp: { offset: PROMISE_PROJECT_OFFSET, bytes: project.toBase58() } },
+        ],
+      });
+      const promises = accounts
+        .map(({ account }) => Buffer.from(account.data))
+        .filter((data) => data.subarray(0, 8).equals(PROMISE_DISCRIMINATOR));
+      const broken = promises.filter((data) => PROMISE_STATES[data.readUInt8(PROMISE_STATE_OFFSET)] === "broken");
+      return { promises: promises.length, broken: broken.length };
     },
 
     async settle(repoId, issueNumber, outcome) {

@@ -35,6 +35,10 @@ export function githubFor(app: App, installationId: number): Github {
         body,
       });
     },
+    async isOpen(repo, number) {
+      const { data } = await (await octokit()).rest.issues.get({ ...split(repo), issue_number: number });
+      return data.state === "open";
+    },
     async hasWriteAccess(repo, login) {
       try {
         const { data } = await (await octokit()).rest.repos.getCollaboratorPermissionLevel({
