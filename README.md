@@ -37,7 +37,7 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Done. `/spam`, `/accept`, an issue close and the already-settled reply ran live on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
 | Pay page with Google sign-in and faucet | Live at `/pay` with the Phantom extension and verified on devnet. Email sign-in is the one open gap: Google sign-in is built but needs `PHANTOM_APP_ID` ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6)) |
 | Pay page pings the app so the label flips | Live: on 2026-10-09 a ping for `pinky-demo` issue 2 flipped `awaiting-promise` to `promised`, then `/accept` kept the promise and the bot commented the refund link. Not yet run: the same journey from a second account through the pay page ([#7](https://github.com/sivaratrisrinivas/pinky/issues/7), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
-| Seed script for ~10 demo issues (`npm run seed-issues`) | Built and tested, **not run yet**: the live criteria of [#9](https://github.com/sivaratrisrinivas/pinky/issues/9) are open (see Seeded demo issues) |
+| Seed script for ~10 demo issues (`npm run seed-issues`) | Done: run live on 2026-10-09, `pinky-demo` issues 10 to 19 ([#9](https://github.com/sivaratrisrinivas/pinky/issues/9)) |
 | README badge (`/badge.svg`) | Done, live at `/badge.svg`; the demo README shows it ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8)) |
 | Full-journey runs | Not started ([#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 
@@ -278,7 +278,7 @@ npm run seed-issues                  # opens them, then waits for the bot's labe
 
 Issues are shared out over the test accounts in turn, and a title that already exists in the repo is skipped, so a re-run opens only what is missing. Each new issue is checked for the `awaiting-promise` label and the bot comment with its pay link, and the script exits non-zero if one doesn't get both within a minute. A test account that GitHub marks as a collaborator or contributor is reported, since the App ignores those. The issue content, token parsing, the "was it asked" check and the README note are tested in `src/seed.test.ts`; the GitHub calls are not automated.
 
-**Status:** the script has not been run. Nothing has been opened on the demo repo, and the demo repo's README does not have the note yet. The two acceptance criteria of [#9](https://github.com/sivaratrisrinivas/pinky/issues/9) stay unchecked until a run with real test-account tokens.
+**Status:** run live on 2026-10-09 with one test account, `askubusku18-dum`, which GitHub marks as `NONE` on the demo repo. It opened `pinky-demo` issues 10 to 19, each got the `awaiting-promise` label and the bot comment, and the demo repo's README now has the seeded note. Because there is one account, all ten issues come from it.
 
 ## Not in v1
 
