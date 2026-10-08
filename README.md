@@ -36,9 +36,9 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | Ask first-timers for a promise (`handleEvent`, webhook) | Done, live at https://pinky-bot.vercel.app ([#4](https://github.com/sivaratrisrinivas/pinky/issues/4)) |
 | Verdicts from maintainer commands and closes (`handleEvent`, real Solana adapter) | Done. `/spam`, `/accept`, an issue close and the already-settled reply ran live on devnet ([#5](https://github.com/sivaratrisrinivas/pinky/issues/5)) |
 | Pay page with Google sign-in and faucet | Live at `/pay` with the Phantom extension and verified on devnet. Email sign-in is the one open gap: Google sign-in is built but needs `PHANTOM_APP_ID` ([#6](https://github.com/sivaratrisrinivas/pinky/issues/6)) |
-| Pay page pings the app so the label flips | Built and tested with fakes; `/api/check-promise` not deployed or run live yet, so the demo-repo criterion of [#7](https://github.com/sivaratrisrinivas/pinky/issues/7) is still open |
+| Pay page pings the app so the label flips | Live: on 2026-10-09 a ping for `pinky-demo` issue 2 flipped `awaiting-promise` to `promised`, then `/accept` kept the promise and the bot commented the refund link. Not yet run: the same journey from a second account through the pay page ([#7](https://github.com/sivaratrisrinivas/pinky/issues/7), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 | Seed script for ~10 demo issues (`npm run seed-issues`) | Built and tested, **not run yet**: the live criteria of [#9](https://github.com/sivaratrisrinivas/pinky/issues/9) are open (see Seeded demo issues) |
-| README badge (`/badge.svg`) | Built and tested, not deployed or run live yet: the demo README doesn't show it and no counts have been seen moving on devnet ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8)) |
+| README badge (`/badge.svg`) | Done, live at `/badge.svg`; the demo README shows it ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8)) |
 | Full-journey runs | Not started ([#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 
 The spec is [#1](https://github.com/sivaratrisrinivas/pinky/issues/1) and the day-by-day plan is in [PLAN.md](PLAN.md).
@@ -96,7 +96,7 @@ npm run typecheck
 
 The tests call the instructions the way a client would and check balances and promise state: a promise then kept, a promise then broken, duplicate promises, double settlement, non-arbiter signers, vouching, redirected destinations and cross-project substitution, plus `reclaim` before and after 30 days, on a settled promise and from a non-promiser.
 
-A local validator can't move its clock, so the 30-day tests load three open promises that are already old (`tests/fixtures/aged-*.json`, listed in `Anchor.toml`) and pair each with a project the test creates. Regenerate them with `npm run fixtures` if the `Promise` account layout changes. The program deployed on devnet doesn't have `reclaim` until it is redeployed with `anchor deploy` (the instruction is not live on devnet yet).
+A local validator can't move its clock, so the 30-day tests load three open promises that are already old (`tests/fixtures/aged-*.json`, listed in `Anchor.toml`) and pair each with a project the test creates. Regenerate them with `npm run fixtures` if the `Promise` account layout changes. The devnet program was upgraded with `reclaim` on 2026-10-09 (the account was extended by 10240 bytes first, because the new binary is larger), and `npm run smoke` passed on it afterwards. A live `reclaim` after 30 days hasn't been run.
 
 ### Deploy and run on devnet
 
@@ -204,7 +204,7 @@ For the demo repo, paste this into its README:
 
 The logic is in `src/badge.ts` behind two ports (repo ID lookup and `countPromises`), tested with fakes in `src/badge.test.ts`. `src/badge-wiring.ts` builds the real ones from the environment the webhook already uses.
 
-Not done yet, so the acceptance criteria of #8 that need a live run stay open: deploy, check the URL returns the real devnet counts, put the line above in the demo repo's README, and watch N go up after a new promise and M go up after a `/spam`.
+Run live on 2026-10-09: the badge read 9 promises, 2 broken, the line above is now in the `pinky-demo` README, a new promise on issue 9 took it to 10 promises, and a `/spam` on that issue took it to 3 broken.
 
 ### Known limits
 
