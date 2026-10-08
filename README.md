@@ -39,7 +39,7 @@ Both destinations are read from stored accounts, never from the caller. In v2 th
 | Pay page pings the app so the label flips | Live: on 2026-10-09 a ping for `pinky-demo` issue 2 flipped `awaiting-promise` to `promised`, then `/accept` kept the promise and the bot commented the refund link. Then the pay page itself, used with the Phantom extension for the `askubusku18-dum` issue 10, flipped the label to `promised` with no manual ping, and `/accept` refunded it. Email sign-in is still not run, because there is no `PHANTOM_APP_ID` ([#7](https://github.com/sivaratrisrinivas/pinky/issues/7), [#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 | Seed script for ~10 demo issues (`npm run seed-issues`) | Done: run live on 2026-10-09, `pinky-demo` issues 10 to 19 ([#9](https://github.com/sivaratrisrinivas/pinky/issues/9)) |
 | README badge (`/badge.svg`) | Done, live at `/badge.svg`; the demo README shows it ([#8](https://github.com/sivaratrisrinivas/pinky/issues/8)) |
-| Full-journey runs | Not started ([#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
+| Full-journey runs | Done on 2026-10-09: five runs in a row on `pinky-demo` issues 20 to 24 from `askubusku18-dum`, with no code change between them. Two ended in `/accept`, one in `/spam`, two in a plain close. They used the Phantom extension, not email sign-in ([#11](https://github.com/sivaratrisrinivas/pinky/issues/11)) |
 
 The spec is [#1](https://github.com/sivaratrisrinivas/pinky/issues/1) and the day-by-day plan is in [PLAN.md](PLAN.md).
 
