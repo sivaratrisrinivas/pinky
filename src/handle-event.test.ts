@@ -179,7 +179,7 @@ describe("handleEvent", () => {
     await handleEvent(opened("issues", "NONE"), { github, chain, appUrl: APP_URL });
 
     expect(comments[0]!.body).toMatch(
-      /^Thanks for opening this! Pinky promise it isn't spam\? This project asks first-time contributors for a small promise of 5 USDC\. It's kept, and the money goes back to whoever made it, when this is closed, unless a maintainer marks it as spam\. \[Make the promise: 30 seconds, sign in with Google\]\(.+\) · Can't pay\? Anyone, like a contributor who knows you, can make the promise for you with the same link\.$/
+      /^Thanks for opening this! Pinky promise it isn't spam\? This project asks first-time contributors for a small promise of 5 USDC\. It's kept, and the money goes back to whoever made it, when this is closed, unless a maintainer marks it as spam\. \[Make the promise: 30 seconds, with Phantom\]\(.+\) · Can't pay\? Anyone, like a contributor who knows you, can make the promise for you with the same link\.$/
     );
   });
 });
