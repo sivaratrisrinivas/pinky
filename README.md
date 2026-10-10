@@ -4,6 +4,8 @@ Pinky promise this isn't spam.
 
 ![Pinky-protected](https://pinky-bot.vercel.app/badge.svg?repo=sivaratrisrinivas/pinky-demo)
 
+> **Judges: try it in 2 minutes.** 1) Phantom → Settings → Developer Settings → Testnet Mode → Solana Devnet. 2) Open an issue on [pinky-demo](https://github.com/sivaratrisrinivas/pinky-demo) from any account that isn't a collaborator. 3) Click the pay link → Get test USDC → Make the promise. Watch the label flip.
+
 ## What
 
 Pinky is a GitHub App and a small Solana escrow program. When a first-time contributor opens an issue or PR, Pinky asks for a refundable promise of 5 USDC. A maintainer closes the issue or comments `/accept`, and the money goes back. A maintainer comments `/spam`, and the money goes to the project's maintainer wallet.
